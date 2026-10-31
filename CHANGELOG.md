@@ -11,11 +11,12 @@
 - **The package and assembly are renamed to `XLibur.RBush`.** Replace the `RBush` package reference with `XLibur.RBush`. The namespace stays `RBush`, so no code changes are needed.
 - **The library targets `net8.0`, `net10.0` and `net11.0`.** `net47` and `netstandard2.0` are no longer built, so .NET Framework and older .NET versions cannot use this release ([#11](https://github.com/XLibur/RBush/pull/11)).
 - **`Insert`, `Delete`, `BulkLoad` and the constructor reject `null`.** A null comparer, a null item and a null `BulkLoad` collection now throw `ArgumentNullException` with the parameter name, instead of failing later with a `NullReferenceException` or an exception that named the wrong parameter ([#5](https://github.com/XLibur/RBush/pull/5)).
+- **`ISpatialIndex<T>` has a new member, `SearchContained`.** Code that implements the interface itself must add it. `RBush<T>` already does.
 - **`Knn` may call the predicate on different items, in a different order.** It now keeps the best `k` items while it scans, instead of sorting everything first, so the predicate runs on candidates in scan order and not in distance order. Results and their order are unchanged, including ties. A predicate should not have side effects ([#15](https://github.com/XLibur/RBush/pull/15)).
 
 ### ✨ Features
 
-- **`RBush<T>.SearchContained(Envelope)` returns only items that lie completely inside a box.** `Search(Envelope)` returns everything that touches the box. The new method skips items that only overlap its edge. Subtrees that are wholly inside the box are added without testing each item.
+- **`SearchContained(Envelope)` on `RBush<T>` and `ISpatialIndex<T>` returns only items that lie completely inside a box.** `Search(Envelope)` returns everything that touches the box. The new method skips items that only overlap its edge. Subtrees that are wholly inside the box are added without testing each item.
 
 ### 🐛 Bug Fixes
 
