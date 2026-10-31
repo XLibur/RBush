@@ -145,6 +145,6 @@ Clone the repository and open `RBush.slnx` in Visual Studio.
 
 ## Compatibility
 
-RBush should run on any .NET system that supports .NET Standard 1.2 (.NET Framework 4.5.1 or later; .NET Core 1.0 or later).
+RBush targets .NET 8, .NET 10 and .NET 11 (release candidate).
 
 
