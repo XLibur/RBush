@@ -10,13 +10,18 @@ public partial class RBush<T>
 	#endregion
 
 	#region Search
+	// One cached traversal queue. A search takes it with an atomic exchange and
+	// puts it back when done; a concurrent search that finds it taken simply
+	// allocates its own, so concurrent searches stay safe.
+	private Queue<Node>? _searchQueue;
+
 	private List<T> DoSearch(in Envelope boundingBox)
 	{
 		if (!Root.Envelope.Intersects(boundingBox))
 			return [];
 
 		var intersections = new List<T>();
-		var queue = new Queue<Node>();
+		var queue = Interlocked.Exchange(ref _searchQueue, null) ?? new Queue<Node>();
 		queue.Enqueue(Root);
 
 		while (queue.Count != 0)
@@ -41,6 +46,8 @@ public partial class RBush<T>
 			}
 		}
 
+		// queue is empty here; hand it back for the next search
+		_searchQueue = queue;
 		return intersections;
 	}
 	#endregion
