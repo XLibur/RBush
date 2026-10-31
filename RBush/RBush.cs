@@ -5,6 +5,20 @@ namespace RBush;
 /// <summary>
 /// An implementation of the R-tree data structure for 2-d spatial indexing.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>Thread safety:</b> any number of threads may call the search methods
+/// (<c>Search</c> and the <c>Knn</c> extension) at the same time, provided
+/// no thread is modifying the tree. <see cref="Insert(T)"/>,
+/// <see cref="BulkLoad(IEnumerable{T})"/>, <see cref="Delete(T)"/> and
+/// <see cref="Clear"/> need exclusive access: do not call them concurrently
+/// with each other or with a search.
+/// </para>
+/// <para>
+/// An item's <see cref="ISpatialData.Envelope"/> must not change while the item
+/// is in the tree. To move an item, delete it, change it, and insert it again.
+/// </para>
+/// </remarks>
 /// <typeparam name="T">The type of elements in the index.</typeparam>
 public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : ISpatialData
 {
