@@ -6,9 +6,15 @@ on:
     branches: 
       - 'master'
     paths-ignore:
-      - '**/readme.md'
+      - '**/README.md'
   pull_request:
     types: [opened, synchronize, reopened]
+    paths-ignore:
+      - '**/README.md'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   build:
@@ -32,6 +38,9 @@ jobs:
       run: dotnet test -c Release --no-build --logger GitHubActions
 
     - name: Upload coverage reports to Codecov with GitHub Action
+      # Secrets are not available to PRs from forks, so skip the upload there.
+      if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.fork == false
       uses: codecov/codecov-action@v4
       with:
         token: ${{ secrets.CODECOV_TOKEN }}
+        fail_ci_if_error: false
