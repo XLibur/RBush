@@ -573,4 +573,32 @@ public class RBushTests
 	[Test]
 	public void DeleteRejectsNullItem() =>
 		Assert.Throws<ArgumentNullException>("item", () => new RBush<Point>().Delete(null!));
+
+	[Test]
+	public void ConcurrentSearchesReturnConsistentResults()
+	{
+		var tree = new RBush<Point>();
+		tree.BulkLoad(GetPoints(2000));
+
+		var boxes = Enumerable.Range(0, 50)
+			.Select(i => new Envelope(MinX: i * 10, MinY: i * 10, MaxX: (i * 10) + 75, MaxY: (i * 10) + 75))
+			.ToArray();
+		var expected = boxes.Select(b => tree.Search(b).Select(p => p.Envelope).ToArray()).ToArray();
+
+		var failures = 0;
+		_ = Parallel.For(0, 16, _ =>
+		{
+			for (var round = 0; round < 200; round++)
+			{
+				for (var i = 0; i < boxes.Length; i++)
+				{
+					var actual = tree.Search(boxes[i]).Select(p => p.Envelope).ToArray();
+					if (!actual.SequenceEqual(expected[i]))
+						_ = Interlocked.Increment(ref failures);
+				}
+			}
+		});
+
+		Assert.Equal(0, failures);
+	}
 }
