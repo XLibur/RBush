@@ -130,22 +130,24 @@ public partial class RBush<T>
 	}
 
 	private double GetPotentialSplitMargins(List<ISpatialData> children) =>
-		GetPotentialEnclosingMargins(children) +
-		GetPotentialEnclosingMargins(children.AsEnumerable().Reverse().ToList());
+		GetPotentialEnclosingMargins(children, reverse: false) +
+		GetPotentialEnclosingMargins(children, reverse: true);
 
-	private double GetPotentialEnclosingMargins(List<ISpatialData> children)
+	// When reverse is true, walks the list back to front, so no reversed copy is needed.
+	private double GetPotentialEnclosingMargins(List<ISpatialData> children, bool reverse)
 	{
+		var count = children.Count;
 		var envelope = Envelope.EmptyBounds;
 		var i = 0;
 		for (; i < _minEntries; i++)
 		{
-			envelope = envelope.Extend(children[i].Envelope);
+			envelope = envelope.Extend(children[reverse ? count - 1 - i : i].Envelope);
 		}
 
 		var totalMargin = envelope.Margin;
-		for (; i < children.Count - _minEntries; i++)
+		for (; i < count - _minEntries; i++)
 		{
-			envelope = envelope.Extend(children[i].Envelope);
+			envelope = envelope.Extend(children[reverse ? count - 1 - i : i].Envelope);
 			totalMargin += envelope.Margin;
 		}
 
@@ -155,20 +157,39 @@ public partial class RBush<T>
 
 	private int GetBestSplitIndex(List<ISpatialData> children)
 	{
-		return Enumerable.Range(_minEntries, children.Count - _minEntries)
-			.Select(i =>
-			{
-				var leftEnvelope = GetEnclosingEnvelope(children.Take(i));
-				var rightEnvelope = GetEnclosingEnvelope(children.Skip(i));
+		var count = children.Count;
 
-				var overlap = leftEnvelope.Intersection(rightEnvelope).Area;
-				var totalArea = leftEnvelope.Area + rightEnvelope.Area;
-				return new { i, overlap, totalArea };
-			})
-			.OrderBy(x => x.overlap)
-			.ThenBy(x => x.totalArea)
-			.Select(x => x.i)
-			.First();
+		// suffix[i] encloses children[i..]; left is extended incrementally.
+		// Candidates are visited in ascending order and only a strictly better
+		// one replaces the current best, so ties keep the lowest index.
+		var suffix = new Envelope[count + 1];
+		suffix[count] = Envelope.EmptyBounds;
+		for (var i = count - 1; i >= _minEntries; i--)
+			suffix[i] = suffix[i + 1].Extend(children[i].Envelope);
+
+		var left = Envelope.EmptyBounds;
+		for (var i = 0; i < _minEntries; i++)
+			left = left.Extend(children[i].Envelope);
+
+		var bestIndex = _minEntries;
+		var bestOverlap = double.MaxValue;
+		var bestArea = double.MaxValue;
+		for (var i = _minEntries; i < count; i++)
+		{
+			var right = suffix[i];
+			var overlap = left.Intersection(right).Area;
+			var totalArea = left.Area + right.Area;
+			if (overlap < bestOverlap || (overlap == bestOverlap && totalArea < bestArea))
+			{
+				bestIndex = i;
+				bestOverlap = overlap;
+				bestArea = totalArea;
+			}
+
+			left = left.Extend(children[i].Envelope);
+		}
+
+		return bestIndex;
 	}
 	#endregion
 	#endregion
