@@ -272,11 +272,12 @@ public partial class RBush<T>
 	#endregion
 
 	#region BuildTree
+	// data is a private copy made by BulkLoad, so it can be reordered in place.
 	private Node BuildTree(T[] data)
 	{
 		var treeHeight = GetDepth(data.Length);
 		var rootMaxEntries = (int)Math.Ceiling(data.Length / Math.Pow(_maxEntries, treeHeight - 1));
-		return BuildNodes(new ArraySegment<T>(data), treeHeight, rootMaxEntries);
+		return BuildNodes(data, 0, data.Length, treeHeight, rootMaxEntries);
 	}
 
 	private int GetDepth(int numNodes)
@@ -294,53 +295,127 @@ public partial class RBush<T>
 		return height;
 	}
 
-	private Node BuildNodes(ArraySegment<T> data, int height, int maxEntries)
+	// Builds the subtree for data[start..start+count). Instead of sorting, the range is
+	// partially ordered in place (OMT with multi-select): only the slice boundaries are
+	// put in order, the contents of each slice are left unordered.
+	private Node BuildNodes(T[] data, int start, int count, int height, int maxEntries)
 	{
-		if (data.Count <= maxEntries)
+		if (count <= maxEntries)
 		{
 			return height == 1
-				? new Node(ToItemList(data), height)
+				? new Node(ToItemList(data, start, count), height)
 				: new Node(
 					[
-						BuildNodes(data, height - 1, _maxEntries),
+						BuildNodes(data, start, count, height - 1, _maxEntries),
 					],
 					height);
 		}
 
-		// after much testing, this is faster than using Array.Sort() on the provided array
-		// in spite of the additional memory cost and copying. go figure!
-		var byX = new ArraySegment<T>(data.OrderBy(i => i.Envelope.MinX).ToArray());
-
-		var nodeSize = (data.Count + (maxEntries - 1)) / maxEntries;
+		var nodeSize = (count + (maxEntries - 1)) / maxEntries;
 		var subSortLength = nodeSize * (int)Math.Ceiling(Math.Sqrt(maxEntries));
+		var end = start + count;
+
+		MultiSelect(data, start, end - 1, subSortLength, byX: true);
 
 		var children = new List<ISpatialData>(maxEntries);
-		for (var subStart = 0; subStart < byX.Count; subStart += subSortLength)
+		for (var subStart = start; subStart < end; subStart += subSortLength)
 		{
-			var subData = Slice(byX, subStart, subSortLength);
-			var byY = new ArraySegment<T>(subData.OrderBy(d => d.Envelope.MinY).ToArray());
+			var subCount = Math.Min(subSortLength, end - subStart);
+			MultiSelect(data, subStart, subStart + subCount - 1, nodeSize, byX: false);
 
-			for (var nodeStart = 0; nodeStart < byY.Count; nodeStart += nodeSize)
+			for (var nodeStart = subStart; nodeStart < subStart + subCount; nodeStart += nodeSize)
 			{
-				children.Add(BuildNodes(Slice(byY, nodeStart, nodeSize), height - 1, _maxEntries));
+				var nodeCount = Math.Min(nodeSize, subStart + subCount - nodeStart);
+				children.Add(BuildNodes(data, nodeStart, nodeCount, height - 1, _maxEntries));
 			}
 		}
 
 		return new Node(children, height);
 	}
 
-	private static List<ISpatialData> ToItemList(ArraySegment<T> data)
+	private static List<ISpatialData> ToItemList(T[] array, int start, int count)
 	{
-		var list = new List<ISpatialData>(data.Count);
-		var array = data.Array!;
-		for (var i = 0; i < data.Count; i++)
-			list.Add(array[data.Offset + i]);
+		var list = new List<ISpatialData>(count);
+		for (var i = 0; i < count; i++)
+			list.Add(array[start + i]);
 		return list;
 	}
 
-	// A view of at most chunkSize items starting at start; no copy.
-	private static ArraySegment<T> Slice(ArraySegment<T> values, int start, int chunkSize) =>
-		new(values.Array!, values.Offset + start, Math.Min(values.Count - start, chunkSize));
+	#region MultiSelect
+	private static double Key(T item, bool byX) =>
+		byX ? item.Envelope.MinX : item.Envelope.MinY;
+
+	// Reorders data[left..right] so that every multiple-of-n offset from left is a
+	// boundary: all items before it have a key <= and all items after a key >=.
+	// Uses an explicit stack, so no recursion depth issues.
+	private static void MultiSelect(T[] data, int left, int right, int n, bool byX)
+	{
+		var stack = new Stack<(int Left, int Right)>();
+		stack.Push((left, right));
+
+		while (stack.Count > 0)
+		{
+			(left, right) = stack.Pop();
+			if (right - left <= n)
+				continue;
+
+			var mid = left + (int)Math.Ceiling((right - left) / (double)n / 2) * n;
+			Select(data, mid, left, right, byX);
+
+			stack.Push((left, mid));
+			stack.Push((mid, right));
+		}
+	}
+
+	// Quickselect with a three-way partition (robust against many equal keys):
+	// afterwards data[k] holds the item that a full sort would put there.
+	private static void Select(T[] data, int k, int left, int right, bool byX)
+	{
+		while (right > left)
+		{
+			var pivot = MedianOfThree(data, left, right, byX);
+			var lt = left;
+			var gt = right;
+			var i = left;
+			while (i <= gt)
+			{
+				var c = Key(data[i], byX).CompareTo(pivot);
+				if (c < 0)
+				{
+					(data[lt], data[i]) = (data[i], data[lt]);
+					lt++;
+					i++;
+				}
+				else if (c > 0)
+				{
+					(data[i], data[gt]) = (data[gt], data[i]);
+					gt--;
+				}
+				else
+				{
+					i++;
+				}
+			}
+
+			if (k < lt)
+				right = lt - 1;
+			else if (k > gt)
+				left = gt + 1;
+			else
+				return;
+		}
+	}
+
+	private static double MedianOfThree(T[] data, int left, int right, bool byX)
+	{
+		var a = Key(data[left], byX);
+		var b = Key(data[left + ((right - left) >> 1)], byX);
+		var c = Key(data[right], byX);
+		if (a.CompareTo(b) > 0) (a, b) = (b, a);
+		if (b.CompareTo(c) > 0) b = c;
+		return a.CompareTo(b) > 0 ? a : b;
+	}
+	#endregion
 	#endregion
 
 	// Indexed loop: avoids boxing List<T>'s enumerator on every ResetEnvelope.
