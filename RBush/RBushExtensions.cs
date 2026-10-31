@@ -31,6 +31,11 @@ public static class RBushExtensions
 	/// <param name="y">The y-coordinate of the center point.</param>
 	/// <param name="maxDistance">The maximum distance of points to be considered "near"; optional.</param>
 	/// <param name="predicate">A function to test each element for a condition; optional.</param>
+	/// <remarks>
+	/// Results are ordered nearest first; elements at equal distance appear in the order
+	/// <c>Search()</c> returns them. <paramref name="predicate"/> is only called for elements
+	/// that could be part of the result, possibly in a different order than the tree stores them.
+	/// </remarks>
 	/// <returns>The list of up to <paramref name="k"/> elements nearest to the given point.</returns>
 	public static IReadOnlyList<T> Knn<T>(
 		this ISpatialIndex<T> tree,
@@ -42,6 +47,11 @@ public static class RBushExtensions
 		where T : ISpatialData
 	{
 		ArgumentNullException.ThrowIfNull(tree);
+
+		// Fast path: a best-first walk of the tree visits roughly log n + k nodes
+		// instead of every item in the window.
+		if (tree is RBush<T> rbush && rbush.KnnSearch(k, x, y, maxDistance, predicate) is { } nearest)
+			return nearest;
 
 		var items = maxDistance == null
 			? tree.Search()
