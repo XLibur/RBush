@@ -601,4 +601,26 @@ public class RBushTests
 
 		Assert.Equal(0, failures);
 	}
+
+	[Test]
+	[Arguments(9)]
+	[Arguments(40)]
+	[Arguments(200)]
+	public void InsertWorksForSmallAndLargeNodeSizes(int maxEntries)
+	{
+		// maxEntries above ~31 makes node splits use the pooled scratch buffer
+		var tree = new RBush<Point>(maxEntries);
+		var points = GetPoints(1500);
+		foreach (var p in points)
+			tree.Insert(p);
+
+		Assert.Equal(1500, tree.Count);
+		Assert.Equal(1500, tree.Search().Count);
+
+		foreach (var box in new[] { new Envelope(0, 0, 100, 100), new Envelope(700, 700, 1400, 1400), new Envelope(-5, -5, 2000, 2000) })
+		{
+			var expected = points.Count(p => p.Envelope.Intersects(box));
+			Assert.Equal(expected, tree.Search(box).Count);
+		}
+	}
 }
