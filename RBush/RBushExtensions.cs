@@ -1,10 +1,13 @@
-﻿namespace RBush;
+﻿using System.Runtime.InteropServices;
+
+namespace RBush;
 
 /// <summary>
 /// Extension methods for the <see cref="RBush{T}"/> object.
 /// </summary>
 public static class RBushExtensions
 {
+	[StructLayout(LayoutKind.Auto)]
 	private readonly record struct Candidate<T>(T Item, double Distance, int Index);
 
 	// Orders by distance, then by position in the search result, which is the
@@ -49,6 +52,20 @@ public static class RBushExtensions
 					MaxX: x + maxDistance.Value,
 					MaxY: y + maxDistance.Value));
 
+		return SelectNearest(items, k, x, y, maxDistance, predicate);
+	}
+
+	// Scans the items once, keeping the nearest k (or all of them when k <= 0), and
+	// returns them nearest first. Equal distances keep their order in `items`.
+	private static List<T> SelectNearest<T>(
+		IReadOnlyList<T> items,
+		int k,
+		double x,
+		double y,
+		double? maxDistance,
+		Func<T, bool>? predicate)
+		where T : ISpatialData
+	{
 		var bounded = k > 0;
 		var capacity = bounded ? Math.Min(k, items.Count) : items.Count;
 		if (capacity == 0)

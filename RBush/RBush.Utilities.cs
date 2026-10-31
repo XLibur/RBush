@@ -23,7 +23,7 @@ public partial class RBush<T>
 			return [];
 
 		var intersections = new List<T>();
-		var queue = Interlocked.Exchange(ref _searchQueue, null) ?? new Queue<Node>();
+		var queue = Interlocked.Exchange(ref _searchQueue, value: null) ?? new Queue<Node>();
 		queue.Enqueue(Root);
 
 		while (queue.Count != 0)
