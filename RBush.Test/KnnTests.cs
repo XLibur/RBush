@@ -152,20 +152,20 @@ public class KnnTests
 		int[] ks = [-1, 0, 1, 5, 50, 599, 600, 5000];
 
 		foreach (var k in ks)
-		foreach (var maxDistance in maxDistances)
-		foreach (var predicate in predicates)
-		{
-			for (var q = 0; q < 5; q++)
-			{
-				var qx = rng.Next(-5, 35);
-				var qy = rng.Next(-5, 35);
-				var expected = ReferenceKnn(tree, k, qx, qy, maxDistance, predicate);
-				var actual = tree.Knn(k, qx, qy, maxDistance, predicate);
-				await Assert.That(actual.Count).IsEqualTo(expected.Count);
-				for (var i = 0; i < expected.Count; i++)
-					await Assert.That(actual[i]).IsSameReferenceAs(expected[i]);
-			}
-		}
+			foreach (var maxDistance in maxDistances)
+				foreach (var predicate in predicates)
+				{
+					for (var q = 0; q < 5; q++)
+					{
+						var qx = rng.Next(-5, 35);
+						var qy = rng.Next(-5, 35);
+						var expected = ReferenceKnn(tree, k, qx, qy, maxDistance, predicate);
+						var actual = tree.Knn(k, qx, qy, maxDistance, predicate);
+						await Assert.That(actual.Count).IsEqualTo(expected.Count);
+						for (var i = 0; i < expected.Count; i++)
+							await Assert.That(actual[i]).IsSameReferenceAs(expected[i]);
+					}
+				}
 	}
 
 	[Test]
