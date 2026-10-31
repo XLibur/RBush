@@ -131,6 +131,118 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 		DoSearchContained(boundingBox);
 
 	/// <summary>
+	/// Appends the elements that touch <paramref name="boundingBox"/> to
+	/// <paramref name="results"/>, without allocating a result list.
+	/// </summary>
+	/// <remarks>
+	/// <paramref name="results"/> is not cleared: matches are added after
+	/// any items it already holds.
+	/// </remarks>
+	/// <param name="boundingBox">The area for which to find elements.</param>
+	/// <param name="results">The list to append matches to.</param>
+	/// <returns>The number of elements appended.</returns>
+	[SuppressMessage("Design", "CA1002:Do not expose generic lists", Justification = "Appending into a caller-owned List<T> is the point of this overload.")]
+	[SuppressMessage("Meziantou.Analyzer", "MA0016:Prefer using collection abstraction instead of implementation", Justification = "Appending into a caller-owned List<T> is the point of this overload.")]
+	public int Search(in Envelope boundingBox, List<T> results)
+	{
+		ArgumentNullException.ThrowIfNull(results);
+
+		var before = results.Count;
+		var sink = new ListSink(results);
+		DoSearch(boundingBox, ref sink);
+		return results.Count - before;
+	}
+
+	/// <summary>
+	/// Appends the elements whose envelope lies completely inside
+	/// <paramref name="boundingBox"/> to <paramref name="results"/>.
+	/// </summary>
+	/// <remarks>
+	/// <paramref name="results"/> is not cleared: matches are added after
+	/// any items it already holds.
+	/// </remarks>
+	/// <param name="boundingBox">The area that must contain the elements.</param>
+	/// <param name="results">The list to append matches to.</param>
+	/// <returns>The number of elements appended.</returns>
+	[SuppressMessage("Design", "CA1002:Do not expose generic lists", Justification = "Appending into a caller-owned List<T> is the point of this overload.")]
+	[SuppressMessage("Meziantou.Analyzer", "MA0016:Prefer using collection abstraction instead of implementation", Justification = "Appending into a caller-owned List<T> is the point of this overload.")]
+	public int SearchContained(in Envelope boundingBox, List<T> results)
+	{
+		ArgumentNullException.ThrowIfNull(results);
+
+		var before = results.Count;
+		var sink = new ListSink(results);
+		DoSearchContained(boundingBox, ref sink);
+		return results.Count - before;
+	}
+
+	/// <summary>
+	/// Counts the elements that touch <paramref name="boundingBox"/>
+	/// (the same elements <see cref="Search(in Envelope)"/> returns) without allocating.
+	/// </summary>
+	/// <remarks>
+	/// Named <c>SearchCount</c> because <see cref="Count"/> is the item count property.
+	/// </remarks>
+	/// <param name="boundingBox">The area for which to count elements.</param>
+	/// <returns>The number of matching elements.</returns>
+	public int SearchCount(in Envelope boundingBox) =>
+		DoCount(boundingBox);
+
+	/// <summary>
+	/// Determines whether any element touches <paramref name="boundingBox"/>.
+	/// Stops at the first match and does not allocate.
+	/// </summary>
+	/// <param name="boundingBox">The area to test.</param>
+	/// <returns><see langword="true"/> if at least one element touches the box.</returns>
+	public bool Any(in Envelope boundingBox) =>
+		DoAny(boundingBox);
+
+	/// <summary>
+	/// Determines whether the tree holds <paramref name="item"/>, found by descending
+	/// on its envelope and matching with the tree's equality comparer (as
+	/// <see cref="Delete(T)"/> does), without removing it.
+	/// </summary>
+	/// <param name="item">The item to look for.</param>
+	/// <returns><see langword="true"/> if an equal item with that envelope is in the tree.</returns>
+	public bool Contains(T item)
+	{
+		// Guard on `is null` first so value-type T is never boxed.
+		if (item is null)
+			ArgumentNullException.ThrowIfNull(item);
+
+		return DoContains(Root, item);
+	}
+
+	/// <summary>
+	/// Moves an item whose envelope has changed: removes it using
+	/// <paramref name="oldEnvelope"/> and inserts it again at its current envelope.
+	/// </summary>
+	/// <remarks>
+	/// The tree locates items by envelope, so the envelope the item had when it was
+	/// inserted must be supplied. If the item is not found there, the tree is left
+	/// unchanged and <see langword="false"/> is returned. The item is matched with the
+	/// tree's equality comparer, so a mutated item must still compare equal to the
+	/// stored one. Needs exclusive access, like <see cref="Insert(T)"/>.
+	/// </remarks>
+	/// <param name="item">The item, already carrying its new envelope.</param>
+	/// <param name="oldEnvelope">The envelope the item had in the tree.</param>
+	/// <returns><see langword="true"/> if the item was found and moved.</returns>
+	public bool Update(T item, in Envelope oldEnvelope)
+	{
+		// Guard on `is null` first so value-type T is never boxed.
+		if (item is null)
+			ArgumentNullException.ThrowIfNull(item);
+
+		if (!DoDelete(Root, item, oldEnvelope))
+			return false;
+
+		CondenseRoot();
+		Insert(item, Root.Height);
+		Count++;
+		return true;
+	}
+
+	/// <summary>
 	/// Adds an object to the <see cref="RBush{T}"/>
 	/// </summary>
 	/// <param name="item">
@@ -221,7 +333,7 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 		if (item is null)
 			ArgumentNullException.ThrowIfNull(item);
 
-		var deleted = DoDelete(Root, item);
+		var deleted = DoDelete(Root, item, item.Envelope);
 		if (deleted)
 			CondenseRoot();
 
@@ -243,9 +355,9 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 		}
 	}
 
-	private bool DoDelete(Node node, T item)
+	private bool DoDelete(Node node, T item, in Envelope envelope)
 	{
-		if (!node.Envelope.Contains(item.Envelope))
+		if (!node.Envelope.Contains(envelope))
 			return false;
 
 		if (node.IsLeaf)
@@ -275,7 +387,7 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 		var flag = false;
 		foreach (var n in node.Items)
 		{
-			flag |= DoDelete((Node)n, item);
+			flag |= DoDelete((Node)n, item, envelope);
 		}
 
 		if (flag)

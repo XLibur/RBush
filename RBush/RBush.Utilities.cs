@@ -17,16 +17,72 @@ public partial class RBush<T>
 	// allocates its own, so concurrent searches stay safe.
 	private Queue<Node>? _searchQueue;
 
+	// Receives search results. Add returns false to stop the traversal early.
+	private interface IResultSink
+	{
+		bool Add(T item);
+	}
+
+	private struct ListSink(List<T> list) : IResultSink
+	{
+		public bool Add(T item)
+		{
+			list.Add(item);
+			return true;
+		}
+	}
+
+	private struct CountSink : IResultSink
+	{
+		public int Count { get; private set; }
+
+		public bool Add(T item)
+		{
+			Count++;
+			return true;
+		}
+	}
+
+	private struct FirstSink : IResultSink
+	{
+		public bool Found { get; private set; }
+
+		public bool Add(T item)
+		{
+			Found = true;
+			return false;
+		}
+	}
+
 	private List<T> DoSearch(in Envelope boundingBox)
 	{
-		if (!Root.Envelope.Intersects(boundingBox))
-			return [];
-
 		var intersections = new List<T>();
+		var sink = new ListSink(intersections);
+		DoSearch(boundingBox, ref sink);
+		return intersections;
+	}
+
+	private List<T> DoSearchContained(in Envelope boundingBox)
+	{
+		var contained = new List<T>();
+		var sink = new ListSink(contained);
+		DoSearchContained(boundingBox, ref sink);
+		return contained;
+	}
+
+	// The one traversal behind every intersection query. TSink is a struct so the
+	// JIT specializes (and inlines) the sink calls for each query kind.
+	private void DoSearch<TSink>(in Envelope boundingBox, ref TSink sink)
+		where TSink : struct, IResultSink
+	{
+		if (!Root.Envelope.Intersects(boundingBox))
+			return;
+
 		var queue = Interlocked.Exchange(ref _searchQueue, value: null) ?? new Queue<Node>();
 		queue.Enqueue(Root);
+		var more = true;
 
-		while (queue.Count != 0)
+		while (more && queue.Count != 0)
 		{
 			var item = queue.Dequeue();
 
@@ -34,8 +90,11 @@ public partial class RBush<T>
 			{
 				foreach (var i in item.Items)
 				{
-					if (i.Envelope.Intersects(boundingBox))
-						intersections.Add((T)i);
+					if (i.Envelope.Intersects(boundingBox) && !sink.Add((T)i))
+					{
+						more = false;
+						break;
+					}
 				}
 			}
 			else
@@ -48,9 +107,9 @@ public partial class RBush<T>
 			}
 		}
 
-		// queue is empty here; hand it back for the next search
+		// hand the queue back for the next search (cleared if we stopped early)
+		queue.Clear();
 		_searchQueue = queue;
-		return intersections;
 	}
 
 	// Inner nodes are pruned with Intersects, not Contains: a node's envelope is the
@@ -58,29 +117,33 @@ public partial class RBush<T>
 	// children are still inside it. Contains is only the test for the items.
 	// When a node lies wholly inside the box, all of its items do, so they are
 	// added without testing each one.
-	private List<T> DoSearchContained(in Envelope boundingBox)
+	private void DoSearchContained<TSink>(in Envelope boundingBox, ref TSink sink)
+		where TSink : struct, IResultSink
 	{
-		var contained = new List<T>();
 		if (!Root.Envelope.Intersects(boundingBox))
-			return contained;
+			return;
 
 		var queue = Interlocked.Exchange(ref _searchQueue, value: null) ?? new Queue<Node>();
 		queue.Enqueue(Root);
+		var more = true;
 
-		while (queue.Count != 0)
+		while (more && queue.Count != 0)
 		{
 			var node = queue.Dequeue();
 
 			if (boundingBox.Contains(node.Envelope))
 			{
-				_ = GetAllChildren(contained, node);
+				more = VisitAll(node, ref sink);
 			}
 			else if (node.IsLeaf)
 			{
 				foreach (var i in node.Items)
 				{
-					if (boundingBox.Contains(i.Envelope))
-						contained.Add((T)i);
+					if (boundingBox.Contains(i.Envelope) && !sink.Add((T)i))
+					{
+						more = false;
+						break;
+					}
 				}
 			}
 			else
@@ -93,8 +156,61 @@ public partial class RBush<T>
 			}
 		}
 
+		queue.Clear();
 		_searchQueue = queue;
-		return contained;
+	}
+
+	private static bool VisitAll<TSink>(Node node, ref TSink sink)
+		where TSink : struct, IResultSink
+	{
+		var items = node.Items;
+		for (var i = 0; i < items.Count; i++)
+		{
+			var more = node.IsLeaf
+				? sink.Add((T)items[i])
+				: VisitAll((Node)items[i], ref sink);
+			if (!more)
+				return false;
+		}
+
+		return true;
+	}
+
+	private int DoCount(in Envelope boundingBox)
+	{
+		var sink = new CountSink();
+		DoSearch(boundingBox, ref sink);
+		return sink.Count;
+	}
+
+	private bool DoAny(in Envelope boundingBox)
+	{
+		var sink = new FirstSink();
+		DoSearch(boundingBox, ref sink);
+		return sink.Found;
+	}
+
+	// Descends only into nodes whose envelope contains the item's envelope (as Delete does).
+	private bool DoContains(Node node, T item)
+	{
+		if (!node.Envelope.Contains(item.Envelope))
+			return false;
+
+		var items = node.Items;
+		for (var i = 0; i < items.Count; i++)
+		{
+			if (node.IsLeaf)
+			{
+				if (_comparer.Equals((T)items[i], item))
+					return true;
+			}
+			else if (DoContains((Node)items[i], item))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 	#endregion
 
