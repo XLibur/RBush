@@ -1,10 +1,7 @@
-name: Release
+name: Release (signed, manual)
 
-on: 
+on:
   workflow_dispatch:
-  push:
-    tags:
-      - '**'
 
 permissions:
   contents: write

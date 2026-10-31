@@ -18,7 +18,7 @@ This code has been copied over from the Javascript [RBush](https://github.com/mo
 
 ## Install
 
-Install with Nuget (`Install-Package RBush`).
+Install with Nuget (`Install-Package XLibur.RBush`). The namespace is still `RBush`.
 
 ## Usage
 
