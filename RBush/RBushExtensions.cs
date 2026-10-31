@@ -1,14 +1,22 @@
-﻿using System.Runtime.InteropServices;
-
-namespace RBush;
+﻿namespace RBush;
 
 /// <summary>
 /// Extension methods for the <see cref="RBush{T}"/> object.
 /// </summary>
 public static class RBushExtensions
 {
-	[StructLayout(LayoutKind.Sequential)]
-	private record struct ItemDistance<T>(T Item, double Distance);
+	private readonly record struct Candidate<T>(T Item, double Distance, int Index);
+
+	// Orders by distance, then by position in the search result, which is the
+	// same (stable) order the previous OrderBy-based implementation produced.
+	private struct CandidateComparer<T> : IComparer<Candidate<T>>
+	{
+		public readonly int Compare(Candidate<T> x, Candidate<T> y)
+		{
+			var c = x.Distance.CompareTo(y.Distance);
+			return c != 0 ? c : x.Index.CompareTo(y.Index);
+		}
+	}
 
 	/// <summary>
 	/// Get the <paramref name="k"/> nearest neighbors to a specific point.
@@ -41,23 +49,97 @@ public static class RBushExtensions
 					MaxX: x + maxDistance.Value,
 					MaxY: y + maxDistance.Value));
 
-		var distances = items
-			.Select(i => new ItemDistance<T>(i, i.Envelope.DistanceTo(x, y)))
-			.OrderBy(i => i.Distance)
-			.AsEnumerable();
+		var bounded = k > 0;
+		var capacity = bounded ? Math.Min(k, items.Count) : items.Count;
+		if (capacity == 0)
+			return [];
 
-		if (maxDistance.HasValue)
-			distances = distances.TakeWhile(i => i.Distance <= maxDistance.Value);
+		// bounded: a max-heap holding the best `capacity` candidates so far, so the
+		// worst of them is always at index 0. unbounded (k <= 0): collect everything.
+		var buffer = new Candidate<T>[capacity];
+		var size = 0;
 
-		if (predicate != null)
-			distances = distances.Where(i => predicate(i.Item));
+		for (var index = 0; index < items.Count; index++)
+		{
+			var item = items[index];
+			var distance = item.Envelope.DistanceTo(x, y);
 
-		if (k > 0)
-			distances = distances.Take(k);
+			if (maxDistance.HasValue && !(distance <= maxDistance.Value))
+				continue;
 
-		return distances
-			.Select(i => i.Item)
-			.ToList();
+			// Candidates arrive in increasing index order, so a candidate that ties
+			// the current worst on distance loses to it (stable ordering).
+			if (bounded && size == capacity && distance.CompareTo(buffer[0].Distance) >= 0)
+				continue;
+
+			if (predicate != null && !predicate(item))
+				continue;
+
+			var candidate = new Candidate<T>(item, distance, index);
+			if (!bounded)
+			{
+				buffer[size++] = candidate;
+			}
+			else if (size < capacity)
+			{
+				buffer[size] = candidate;
+				SiftUp(buffer, size);
+				size++;
+			}
+			else
+			{
+				buffer[0] = candidate;
+				SiftDown(buffer, size);
+			}
+		}
+
+		buffer.AsSpan(0, size).Sort(new CandidateComparer<T>());
+
+		var result = new List<T>(size);
+		for (var i = 0; i < size; i++)
+			result.Add(buffer[i].Item);
+		return result;
+	}
+
+	private static bool IsWorse<T>(in Candidate<T> a, in Candidate<T> b)
+	{
+		var c = a.Distance.CompareTo(b.Distance);
+		return c > 0 || (c == 0 && a.Index > b.Index);
+	}
+
+	private static void SiftUp<T>(Candidate<T>[] heap, int i)
+	{
+		while (i > 0)
+		{
+			var parent = (i - 1) / 2;
+			if (!IsWorse(in heap[i], in heap[parent]))
+				break;
+
+			(heap[i], heap[parent]) = (heap[parent], heap[i]);
+			i = parent;
+		}
+	}
+
+	private static void SiftDown<T>(Candidate<T>[] heap, int size)
+	{
+		var i = 0;
+		while (true)
+		{
+			var left = (2 * i) + 1;
+			if (left >= size)
+				return;
+
+			var worst = left;
+			var right = left + 1;
+			if (right < size && IsWorse(in heap[right], in heap[left]))
+				worst = right;
+
+			if (!IsWorse(in heap[worst], in heap[i]))
+				return;
+
+			(heap[i], heap[worst]) = (heap[worst], heap[i]);
+			i = worst;
+		}
 	}
 
 	/// <summary>

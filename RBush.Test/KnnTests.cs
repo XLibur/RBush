@@ -106,4 +106,69 @@ public class KnnTests
 			.ToList();
 		Assert.Equal(expected, result);
 	}
+
+	// The original LINQ implementation, kept as the reference for the equivalence test.
+	private static List<Point> ReferenceKnn(
+		RBush<Point> tree, int k, double x, double y, double? maxDistance, Func<Point, bool>? predicate)
+	{
+		var items = maxDistance == null
+			? tree.Search()
+			: tree.Search(new Envelope(x - maxDistance.Value, y - maxDistance.Value, x + maxDistance.Value, y + maxDistance.Value));
+
+		var distances = items
+			.Select(i => (Item: i, Distance: i.Envelope.DistanceTo(x, y)))
+			.OrderBy(i => i.Distance)
+			.AsEnumerable();
+
+		if (maxDistance.HasValue)
+			distances = distances.TakeWhile(i => i.Distance <= maxDistance.Value);
+		if (predicate != null)
+			distances = distances.Where(i => predicate(i.Item));
+		if (k > 0)
+			distances = distances.Take(k);
+
+		return distances.Select(i => i.Item).ToList();
+	}
+
+	[Test]
+	public void MatchesReferenceImplementationIncludingTies()
+	{
+		var rng = new Random(1234);
+		// integer grid coordinates force many equal distances (ties)
+		var points = Enumerable.Range(0, 600)
+			.Select(_ =>
+			{
+				var px = rng.Next(0, 30);
+				var py = rng.Next(0, 30);
+				return new Point(px, py, px + rng.Next(0, 2), py + rng.Next(0, 2));
+			})
+			.ToArray();
+
+		var tree = new RBush<Point>();
+		tree.BulkLoad(points);
+
+		Func<Point, bool>?[] predicates = [null, p => p.Envelope.MinX % 2 == 0, p => false];
+		double?[] maxDistances = [null, 0, 3.5, 12, 100];
+		int[] ks = [-1, 0, 1, 5, 50, 599, 600, 5000];
+
+		foreach (var k in ks)
+		foreach (var maxDistance in maxDistances)
+		foreach (var predicate in predicates)
+		{
+			for (var q = 0; q < 5; q++)
+			{
+				var qx = rng.Next(-5, 35);
+				var qy = rng.Next(-5, 35);
+				var expected = ReferenceKnn(tree, k, qx, qy, maxDistance, predicate);
+				var actual = tree.Knn(k, qx, qy, maxDistance, predicate);
+				Assert.Equal(expected.Count, actual.Count);
+				for (var i = 0; i < expected.Count; i++)
+					Assert.Same(expected[i], actual[i]);
+			}
+		}
+	}
+
+	[Test]
+	public void ReturnsEmptyForEmptyTree() =>
+		Assert.Empty(new RBush<Point>().Knn(5, 0, 0));
 }
