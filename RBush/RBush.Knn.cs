@@ -11,8 +11,15 @@ public partial class RBush<T>
 
 	// An entry in the best-first queue: a node or an item, with the distance from
 	// the query point to its envelope and its position in depth-first order.
+	// The lowest bit of Path marks an item (a leaf's child) rather than a branch. It
+	// is recorded when the entry is queued because an item can itself be a Node (an
+	// RBush<ISpatialData> may store another tree's Root), so its runtime type cannot
+	// tell an item from a branch. The bit sits below every position bit, so it never
+	// changes the order.
 	[StructLayout(LayoutKind.Auto)]
 	private readonly record struct KnnEntry(double Distance, ulong Path, ISpatialData Data);
+
+	private const ulong ItemFlag = 1;
 
 	// Reused by Knn queries. A query takes it with Interlocked.Exchange and puts it
 	// back when done; a concurrent query that finds it taken allocates its own.
@@ -31,31 +38,37 @@ public partial class RBush<T>
 		if (Root.Items.Count == 0)
 			return [];
 
-		// Each level of the tree gets `bits` bits of a 64-bit position key, holding the
+		// Each level of the tree gets `bits` bits of a 64-bit position key (bit 0 is kept for the item flag), holding the
 		// child index + 1. Comparing keys then equals comparing positions in a
 		// depth-first walk (a parent sorts before its children), which is the
 		// order Search() returns items in.
 		var bits = BitOperations.Log2((uint)_maxEntries + 1) + 1;
 		var rootHeight = Root.Height;
-		if (bits * rootHeight > 64)
+		if (bits * rootHeight > 63)
 			return null;
 
 		var heap = Interlocked.Exchange(ref _knnHeap, value: null) ?? new KnnEntry[32];
 		var size = 0;
-		var result = new List<T>(k > 0 ? Math.Min(k, Count) : Count);
+		// With no k and a maxDistance the match count is unknown and may be tiny, so
+		// start small and let the list grow.
+		var capacity = k > 0 ? Math.Min(k, Count) : (maxDistance.HasValue ? 0 : Count);
+		var result = new List<T>(capacity);
 
 		Push(ref heap, ref size, new KnnEntry(Root.Envelope.DistanceTo(x, y), 0, Root));
 
 		while (size > 0 && (k <= 0 || result.Count < k))
 		{
 			var entry = Pop(heap, ref size);
-			if (entry.Data is not Node node)
+			if ((entry.Path & ItemFlag) != 0)
 			{
 				var item = (T)entry.Data;
 				if (predicate == null || predicate(item))
 					result.Add(item);
 				continue;
 			}
+
+			var node = (Node)entry.Data;
+			var itemFlag = node.IsLeaf ? ItemFlag : 0;
 
 			var shift = 64 - (bits * (rootHeight - node.Height + 1));
 			var items = node.Items;
@@ -66,7 +79,7 @@ public partial class RBush<T>
 				if (maxDistance.HasValue && !(distance <= maxDistance.Value))
 					continue;
 
-				var path = entry.Path | ((ulong)(i + 1) << shift);
+				var path = entry.Path | ((ulong)(i + 1) << shift) | itemFlag;
 				Push(ref heap, ref size, new KnnEntry(distance, path, child));
 			}
 		}

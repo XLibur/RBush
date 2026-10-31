@@ -279,4 +279,37 @@ public class KnnTests
 	[Test]
 	public async Task ReturnsEmptyForEmptyTree() =>
 		await Assert.That(new RBush<Point>().Knn(5, 0, 0)).IsEmpty();
+
+	[Test]
+	public async Task ReturnsStoredNodesAsItemsInsteadOfOpeningThem()
+	{
+		// RBush<ISpatialData> can store another tree's Root, which is a Node. Knn must
+		// return it as an item, not return its children.
+		var inner = new RBush<Point>();
+		inner.BulkLoad([new Point(1, 1, 1, 1), new Point(2, 2, 2, 2), new Point(3, 3, 3, 3)]);
+
+		var outer = new RBush<ISpatialData>();
+		outer.Insert(inner.Root);
+
+		var result = outer.Knn(5, 0, 0);
+
+		await Assert.That(result.Count).IsEqualTo(1);
+		await Assert.That(result[0]).IsSameReferenceAs(inner.Root);
+	}
+
+	[Test]
+	public async Task SmallMaxDistanceWithNoLimitReturnsOnlyNearbyItems()
+	{
+		var tree = new RBush<Point>();
+		tree.BulkLoad(s_points);
+
+		var result = tree.Knn(0, 40, 40, maxDistance: 1);
+		var expected = s_points
+			.Where(p => p.DistanceTo(40, 40) <= 1)
+			.OrderBy(p => p.DistanceTo(40, 40))
+			.ToList();
+
+		await Assert.That(result).IsEquivalentTo(expected, CollectionOrdering.Matching);
+		await Assert.That(tree.Knn(0, 1000, 1000, maxDistance: 1)).IsEmpty();
+	}
 }
