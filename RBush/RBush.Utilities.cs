@@ -17,16 +17,72 @@ public partial class RBush<T>
 	// allocates its own, so concurrent searches stay safe.
 	private Queue<Node>? _searchQueue;
 
+	// Receives search results. Add returns false to stop the traversal early.
+	private interface IResultSink
+	{
+		bool Add(T item);
+	}
+
+	private struct ListSink(List<T> list) : IResultSink
+	{
+		public bool Add(T item)
+		{
+			list.Add(item);
+			return true;
+		}
+	}
+
+	private struct CountSink : IResultSink
+	{
+		public int Count { get; private set; }
+
+		public bool Add(T item)
+		{
+			Count++;
+			return true;
+		}
+	}
+
+	private struct FirstSink : IResultSink
+	{
+		public bool Found { get; private set; }
+
+		public bool Add(T item)
+		{
+			Found = true;
+			return false;
+		}
+	}
+
 	private List<T> DoSearch(in Envelope boundingBox)
 	{
-		if (!Root.Envelope.Intersects(boundingBox))
-			return [];
-
 		var intersections = new List<T>();
+		var sink = new ListSink(intersections);
+		DoSearch(boundingBox, ref sink);
+		return intersections;
+	}
+
+	private List<T> DoSearchContained(in Envelope boundingBox)
+	{
+		var contained = new List<T>();
+		var sink = new ListSink(contained);
+		DoSearchContained(boundingBox, ref sink);
+		return contained;
+	}
+
+	// The one traversal behind every intersection query. TSink is a struct so the
+	// JIT specializes (and inlines) the sink calls for each query kind.
+	private void DoSearch<TSink>(in Envelope boundingBox, ref TSink sink)
+		where TSink : struct, IResultSink
+	{
+		if (!Root.Envelope.Intersects(boundingBox))
+			return;
+
 		var queue = Interlocked.Exchange(ref _searchQueue, value: null) ?? new Queue<Node>();
 		queue.Enqueue(Root);
+		var more = true;
 
-		while (queue.Count != 0)
+		while (more && queue.Count != 0)
 		{
 			var item = queue.Dequeue();
 
@@ -34,8 +90,11 @@ public partial class RBush<T>
 			{
 				foreach (var i in item.Items)
 				{
-					if (i.Envelope.Intersects(boundingBox))
-						intersections.Add((T)i);
+					if (i.Envelope.Intersects(boundingBox) && !sink.Add((T)i))
+					{
+						more = false;
+						break;
+					}
 				}
 			}
 			else
@@ -48,9 +107,9 @@ public partial class RBush<T>
 			}
 		}
 
-		// queue is empty here; hand it back for the next search
+		// hand the queue back for the next search (cleared if we stopped early)
+		queue.Clear();
 		_searchQueue = queue;
-		return intersections;
 	}
 
 	// Inner nodes are pruned with Intersects, not Contains: a node's envelope is the
@@ -58,29 +117,33 @@ public partial class RBush<T>
 	// children are still inside it. Contains is only the test for the items.
 	// When a node lies wholly inside the box, all of its items do, so they are
 	// added without testing each one.
-	private List<T> DoSearchContained(in Envelope boundingBox)
+	private void DoSearchContained<TSink>(in Envelope boundingBox, ref TSink sink)
+		where TSink : struct, IResultSink
 	{
-		var contained = new List<T>();
 		if (!Root.Envelope.Intersects(boundingBox))
-			return contained;
+			return;
 
 		var queue = Interlocked.Exchange(ref _searchQueue, value: null) ?? new Queue<Node>();
 		queue.Enqueue(Root);
+		var more = true;
 
-		while (queue.Count != 0)
+		while (more && queue.Count != 0)
 		{
 			var node = queue.Dequeue();
 
 			if (boundingBox.Contains(node.Envelope))
 			{
-				_ = GetAllChildren(contained, node);
+				more = VisitAll(node, ref sink);
 			}
 			else if (node.IsLeaf)
 			{
 				foreach (var i in node.Items)
 				{
-					if (boundingBox.Contains(i.Envelope))
-						contained.Add((T)i);
+					if (boundingBox.Contains(i.Envelope) && !sink.Add((T)i))
+					{
+						more = false;
+						break;
+					}
 				}
 			}
 			else
@@ -93,8 +156,61 @@ public partial class RBush<T>
 			}
 		}
 
+		queue.Clear();
 		_searchQueue = queue;
-		return contained;
+	}
+
+	private static bool VisitAll<TSink>(Node node, ref TSink sink)
+		where TSink : struct, IResultSink
+	{
+		var items = node.Items;
+		for (var i = 0; i < items.Count; i++)
+		{
+			var more = node.IsLeaf
+				? sink.Add((T)items[i])
+				: VisitAll((Node)items[i], ref sink);
+			if (!more)
+				return false;
+		}
+
+		return true;
+	}
+
+	private int DoCount(in Envelope boundingBox)
+	{
+		var sink = new CountSink();
+		DoSearch(boundingBox, ref sink);
+		return sink.Count;
+	}
+
+	private bool DoAny(in Envelope boundingBox)
+	{
+		var sink = new FirstSink();
+		DoSearch(boundingBox, ref sink);
+		return sink.Found;
+	}
+
+	// Descends only into nodes whose envelope contains the item's envelope (as Delete does).
+	private bool DoContains(Node node, T item)
+	{
+		if (!node.Envelope.Contains(item.Envelope))
+			return false;
+
+		var items = node.Items;
+		for (var i = 0; i < items.Count; i++)
+		{
+			if (node.IsLeaf)
+			{
+				if (_comparer.Equals((T)items[i], item))
+					return true;
+			}
+			else if (DoContains((Node)items[i], item))
+			{
+				return true;
+			}
+		}
+
+		return false;
 	}
 	#endregion
 
@@ -272,11 +388,12 @@ public partial class RBush<T>
 	#endregion
 
 	#region BuildTree
+	// data is a private copy made by BulkLoad, so it can be reordered in place.
 	private Node BuildTree(T[] data)
 	{
 		var treeHeight = GetDepth(data.Length);
 		var rootMaxEntries = (int)Math.Ceiling(data.Length / Math.Pow(_maxEntries, treeHeight - 1));
-		return BuildNodes(new ArraySegment<T>(data), treeHeight, rootMaxEntries);
+		return BuildNodes(data, 0, data.Length, treeHeight, rootMaxEntries);
 	}
 
 	private int GetDepth(int numNodes)
@@ -294,53 +411,127 @@ public partial class RBush<T>
 		return height;
 	}
 
-	private Node BuildNodes(ArraySegment<T> data, int height, int maxEntries)
+	// Builds the subtree for data[start..start+count). Instead of sorting, the range is
+	// partially ordered in place (OMT with multi-select): only the slice boundaries are
+	// put in order, the contents of each slice are left unordered.
+	private Node BuildNodes(T[] data, int start, int count, int height, int maxEntries)
 	{
-		if (data.Count <= maxEntries)
+		if (count <= maxEntries)
 		{
 			return height == 1
-				? new Node(ToItemList(data), height)
+				? new Node(ToItemList(data, start, count), height)
 				: new Node(
 					[
-						BuildNodes(data, height - 1, _maxEntries),
+						BuildNodes(data, start, count, height - 1, _maxEntries),
 					],
 					height);
 		}
 
-		// after much testing, this is faster than using Array.Sort() on the provided array
-		// in spite of the additional memory cost and copying. go figure!
-		var byX = new ArraySegment<T>(data.OrderBy(i => i.Envelope.MinX).ToArray());
-
-		var nodeSize = (data.Count + (maxEntries - 1)) / maxEntries;
+		var nodeSize = (count + (maxEntries - 1)) / maxEntries;
 		var subSortLength = nodeSize * (int)Math.Ceiling(Math.Sqrt(maxEntries));
+		var end = start + count;
+
+		MultiSelect(data, start, end - 1, subSortLength, byX: true);
 
 		var children = new List<ISpatialData>(maxEntries);
-		for (var subStart = 0; subStart < byX.Count; subStart += subSortLength)
+		for (var subStart = start; subStart < end; subStart += subSortLength)
 		{
-			var subData = Slice(byX, subStart, subSortLength);
-			var byY = new ArraySegment<T>(subData.OrderBy(d => d.Envelope.MinY).ToArray());
+			var subCount = Math.Min(subSortLength, end - subStart);
+			MultiSelect(data, subStart, subStart + subCount - 1, nodeSize, byX: false);
 
-			for (var nodeStart = 0; nodeStart < byY.Count; nodeStart += nodeSize)
+			for (var nodeStart = subStart; nodeStart < subStart + subCount; nodeStart += nodeSize)
 			{
-				children.Add(BuildNodes(Slice(byY, nodeStart, nodeSize), height - 1, _maxEntries));
+				var nodeCount = Math.Min(nodeSize, subStart + subCount - nodeStart);
+				children.Add(BuildNodes(data, nodeStart, nodeCount, height - 1, _maxEntries));
 			}
 		}
 
 		return new Node(children, height);
 	}
 
-	private static List<ISpatialData> ToItemList(ArraySegment<T> data)
+	private static List<ISpatialData> ToItemList(T[] array, int start, int count)
 	{
-		var list = new List<ISpatialData>(data.Count);
-		var array = data.Array!;
-		for (var i = 0; i < data.Count; i++)
-			list.Add(array[data.Offset + i]);
+		var list = new List<ISpatialData>(count);
+		for (var i = 0; i < count; i++)
+			list.Add(array[start + i]);
 		return list;
 	}
 
-	// A view of at most chunkSize items starting at start; no copy.
-	private static ArraySegment<T> Slice(ArraySegment<T> values, int start, int chunkSize) =>
-		new(values.Array!, values.Offset + start, Math.Min(values.Count - start, chunkSize));
+	#region MultiSelect
+	private static double Key(T item, bool byX) =>
+		byX ? item.Envelope.MinX : item.Envelope.MinY;
+
+	// Reorders data[left..right] so that every multiple-of-n offset from left is a
+	// boundary: all items before it have a key <= and all items after a key >=.
+	// Uses an explicit stack, so no recursion depth issues.
+	private static void MultiSelect(T[] data, int left, int right, int n, bool byX)
+	{
+		var stack = new Stack<(int Left, int Right)>();
+		stack.Push((left, right));
+
+		while (stack.Count > 0)
+		{
+			(left, right) = stack.Pop();
+			if (right - left <= n)
+				continue;
+
+			var mid = left + (int)Math.Ceiling((right - left) / (double)n / 2) * n;
+			Select(data, mid, left, right, byX);
+
+			stack.Push((left, mid));
+			stack.Push((mid, right));
+		}
+	}
+
+	// Quickselect with a three-way partition (robust against many equal keys):
+	// afterwards data[k] holds the item that a full sort would put there.
+	private static void Select(T[] data, int k, int left, int right, bool byX)
+	{
+		while (right > left)
+		{
+			var pivot = MedianOfThree(data, left, right, byX);
+			var lt = left;
+			var gt = right;
+			var i = left;
+			while (i <= gt)
+			{
+				var c = Key(data[i], byX).CompareTo(pivot);
+				if (c < 0)
+				{
+					(data[lt], data[i]) = (data[i], data[lt]);
+					lt++;
+					i++;
+				}
+				else if (c > 0)
+				{
+					(data[i], data[gt]) = (data[gt], data[i]);
+					gt--;
+				}
+				else
+				{
+					i++;
+				}
+			}
+
+			if (k < lt)
+				right = lt - 1;
+			else if (k > gt)
+				left = gt + 1;
+			else
+				return;
+		}
+	}
+
+	private static double MedianOfThree(T[] data, int left, int right, bool byX)
+	{
+		var a = Key(data[left], byX);
+		var b = Key(data[left + ((right - left) >> 1)], byX);
+		var c = Key(data[right], byX);
+		if (a.CompareTo(b) > 0) (a, b) = (b, a);
+		if (b.CompareTo(c) > 0) b = c;
+		return a.CompareTo(b) > 0 ? a : b;
+	}
+	#endregion
 	#endregion
 
 	// Indexed loop: avoids boxing List<T>'s enumerator on every ResetEnvelope.
