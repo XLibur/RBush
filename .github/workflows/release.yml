@@ -24,6 +24,12 @@ jobs:
           8.0.x
           10.0.x
 
+    - name: Setup .NET 11 (preview/RC)
+      uses: actions/setup-dotnet@v4
+      with:
+        dotnet-version: 11.0.x
+        dotnet-quality: preview
+
     - name: Restore dependencies
       run: dotnet restore
     - name: Build

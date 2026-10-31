@@ -168,11 +168,7 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 		{
 			if (Root.Height < dataRoot.Height)
 			{
-#pragma warning disable IDE0180 // netstandard 1.2 doesn't support tuple
-				var tmp = Root;
-				Root = dataRoot;
-				dataRoot = tmp;
-#pragma warning restore IDE0180
+				(Root, dataRoot) = (dataRoot, Root);
 			}
 
 			Insert(dataRoot, Root.Height - dataRoot.Height);
