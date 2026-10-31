@@ -248,11 +248,19 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 	/// <param name="item">
 	/// The object to be added to <see cref="RBush{T}"/>.
 	/// </param>
+	/// <exception cref="ArgumentNullException"><paramref name="item"/> is <see langword="null"/>.</exception>
+	/// <exception cref="ArgumentException">
+	/// The envelope of <paramref name="item"/> contains a NaN coordinate
+	/// or has a minimum greater than its maximum.
+	/// </exception>
 	public void Insert(T item)
 	{
 		// Guard on `is null` first so value-type T is never boxed.
 		if (item is null)
 			ArgumentNullException.ThrowIfNull(item);
+
+		if (!item.Envelope.IsValid())
+			ThrowInvalidEnvelope(nameof(item), item.Envelope, index: null);
 
 		Insert(item, Root.Height);
 		Count++;
@@ -268,12 +276,21 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 	/// For multiple items, this method is more performant than 
 	/// adding items individually via <see cref="Insert(T)"/>.
 	/// </remarks>
+	/// <exception cref="ArgumentNullException">
+	/// <paramref name="items"/> is <see langword="null"/> or contains a <see langword="null"/> item.
+	/// </exception>
+	/// <exception cref="ArgumentException">
+	/// An item has an envelope with a NaN coordinate or a minimum greater than its maximum.
+	/// Every item is checked before the tree is changed, so the tree is unchanged on failure.
+	/// </exception>
 	public void BulkLoad(IEnumerable<T> items)
 	{
 		ArgumentNullException.ThrowIfNull(items);
 
 		var data = items.ToArray();
 		if (data.Length == 0) return;
+
+		ValidateEnvelopes(data, nameof(items));
 
 		if (Root.IsLeaf &&
 			Root.Items.Count + data.Length < _maxEntries)
@@ -318,6 +335,28 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 
 			Insert(dataRoot, Root.Height - dataRoot.Height);
 		}
+	}
+
+	private static void ValidateEnvelopes(T[] data, string paramName)
+	{
+		for (var i = 0; i < data.Length; i++)
+		{
+			var item = data[i];
+			if (item is null)
+				throw new ArgumentNullException(paramName, $"The item at index {i} is null.");
+
+			if (!item.Envelope.IsValid())
+				ThrowInvalidEnvelope(paramName, item.Envelope, index: i);
+		}
+	}
+
+	[DoesNotReturn]
+	private static void ThrowInvalidEnvelope(string paramName, in Envelope envelope, int? index)
+	{
+		var where = index is { } i ? $"The item at index {i}" : "The item";
+		throw new ArgumentException(
+			$"{where} has an invalid envelope {envelope}: coordinates must not be NaN and each minimum must not exceed its maximum.",
+			paramName);
 	}
 
 	/// <summary>

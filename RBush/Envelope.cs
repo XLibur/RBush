@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace RBush;
@@ -87,6 +88,12 @@ public readonly record struct Envelope(
 		MinY <= other.MaxY &&
 		MaxX >= other.MinX &&
 		MaxY >= other.MinY;
+
+	// True when neither axis is NaN and each minimum is <= its maximum.
+	// Any NaN makes the comparison false. Non-short-circuit '&' keeps it branch-free.
+	[MethodImpl(MethodImplOptions.AggressiveInlining)]
+	internal bool IsValid() =>
+		(MinX <= MaxX) & (MinY <= MaxY);
 
 	/// <summary>
 	/// A bounding box that contains the entire 2-d plane.
