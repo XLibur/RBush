@@ -141,7 +141,7 @@ changes made were to adapt coding styles and preferences.
 
 ## Development
 
-Clone the repository and open `RBush.sln` in Visual Studio.
+Clone the repository and open `RBush.slnx` in Visual Studio.
 
 ## Compatibility
 
