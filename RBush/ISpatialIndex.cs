@@ -25,4 +25,15 @@ public interface ISpatialIndex<out T>
 	/// from this <see cref="ISpatialIndex{T}"/>.
 	/// </returns>
 	IReadOnlyList<T> Search(in Envelope boundingBox);
+
+	/// <summary>
+	/// Get the elements from this <see cref="ISpatialIndex{T}"/> whose envelope
+	/// lies completely inside the <paramref name="boundingBox"/> bounding box.
+	/// </summary>
+	/// <param name="boundingBox">The area that must contain the elements.</param>
+	/// <returns>
+	/// A list of the elements whose envelopes are contained by the bounding box.
+	/// The order of the results is not specified.
+	/// </returns>
+	IReadOnlyList<T> SearchContained(in Envelope boundingBox);
 }
