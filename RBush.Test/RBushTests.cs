@@ -495,4 +495,16 @@ public class RBushTests
 			expected: tree.Search().Count(p => p.Envelope.Intersects(envelope)),
 			actual: tree.Search(envelope).Count);
 	}
+
+	[Test]
+	public void BulkLoadOfExactPowerOfMaxEntriesDoesNotAddExtraLevel()
+	{
+		// 5^3 = 125; Math.Log(125) / Math.Log(5) evaluates to 3.0000000000000004
+		var tree = new RBush<Point>(5);
+		tree.BulkLoad(GetPoints(125));
+
+		Assert.Equal(3, tree.Root.Height);
+		Assert.Equal(125, tree.Count);
+		Assert.Equal(125, tree.Search().Count);
+	}
 }
