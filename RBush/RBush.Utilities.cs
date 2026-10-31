@@ -181,8 +181,20 @@ public partial class RBush<T>
 		return BuildNodes(new ArraySegment<T>(data), treeHeight, rootMaxEntries);
 	}
 
-	private int GetDepth(int numNodes) =>
-		(int)Math.Ceiling(Math.Log(numNodes) / Math.Log(_maxEntries));
+	private int GetDepth(int numNodes)
+	{
+		// Smallest height h such that _maxEntries^h >= numNodes. Integer
+		// arithmetic avoids floating-point error in Math.Log for exact powers.
+		var height = 0;
+		long capacity = 1;
+		while (capacity < numNodes)
+		{
+			capacity *= _maxEntries;
+			height++;
+		}
+
+		return height;
+	}
 
 	private Node BuildNodes(ArraySegment<T> data, int height, int maxEntries)
 	{
