@@ -6,11 +6,7 @@
   </PropertyGroup>
 
   <ItemGroup>
-	<PackageReference Include="coverlet.collector" PrivateAssets="All" />
-	<PackageReference Include="coverlet.msbuild" PrivateAssets="All" />
-	<PackageReference Include="GitHubActionsTestLogger" PrivateAssets="All" />
-	<PackageReference Include="TUnit.Engine" />
-	<PackageReference Include="xunit.v3.assert" />
+	<PackageReference Include="TUnit" />
   </ItemGroup>
 
   <ItemGroup>

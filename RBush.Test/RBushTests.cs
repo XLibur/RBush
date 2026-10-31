@@ -1,5 +1,3 @@
-using Xunit;
-
 namespace RBush.Test;
 
 public class RBushTests
@@ -25,7 +23,7 @@ public class RBushTests
 			.ToList();
 
 	[Test]
-	public void RootLeafSplitWorks()
+	public async Task RootLeafSplitWorks()
 	{
 		var data = GetPoints(12);
 
@@ -33,67 +31,65 @@ public class RBushTests
 		for (var i = 0; i < 9; i++)
 			tree.Insert(data[i]);
 
-		Assert.Equal(1, tree.Root.Height);
-		Assert.Equal(9, tree.Root.Children.Count);
-		Assert.True(tree.Root.IsLeaf);
+		await Assert.That(tree.Root.Height).IsEqualTo(1);
+		await Assert.That(tree.Root.Children.Count).IsEqualTo(9);
+		await Assert.That(tree.Root.IsLeaf).IsTrue();
 
-		Assert.Equal(0, tree.Root.Envelope.MinX);
-		Assert.Equal(0, tree.Root.Envelope.MinY);
-		Assert.Equal(8, tree.Root.Envelope.MaxX);
-		Assert.Equal(8, tree.Root.Envelope.MaxY);
+		await Assert.That(tree.Root.Envelope.MinX).IsEqualTo(0);
+		await Assert.That(tree.Root.Envelope.MinY).IsEqualTo(0);
+		await Assert.That(tree.Root.Envelope.MaxX).IsEqualTo(8);
+		await Assert.That(tree.Root.Envelope.MaxY).IsEqualTo(8);
 
 		tree.Insert(data[9]);
 
-		Assert.Equal(2, tree.Root.Height);
-		Assert.Equal(2, tree.Root.Children.Count);
-		Assert.False(tree.Root.IsLeaf);
+		await Assert.That(tree.Root.Height).IsEqualTo(2);
+		await Assert.That(tree.Root.Children.Count).IsEqualTo(2);
+		await Assert.That(tree.Root.IsLeaf).IsFalse();
 
-		Assert.Equal(0, tree.Root.Envelope.MinX);
-		Assert.Equal(0, tree.Root.Envelope.MinY);
-		Assert.Equal(9, tree.Root.Envelope.MaxX);
-		Assert.Equal(9, tree.Root.Envelope.MaxY);
+		await Assert.That(tree.Root.Envelope.MinX).IsEqualTo(0);
+		await Assert.That(tree.Root.Envelope.MinY).IsEqualTo(0);
+		await Assert.That(tree.Root.Envelope.MaxX).IsEqualTo(9);
+		await Assert.That(tree.Root.Envelope.MaxY).IsEqualTo(9);
 	}
 
 	[Test]
-	public void InsertTestData()
+	public async Task InsertTestData()
 	{
 		var tree = new RBush<Point>();
 		foreach (var p in s_points)
 			tree.Insert(p);
 
-		Assert.Equal(s_points.Length, tree.Count);
-		Assert.True(new HashSet<Point>(s_points)
-			.SetEquals(tree.Search()));
+		await Assert.That(tree.Count).IsEqualTo(s_points.Length);
+		await Assert.That(new HashSet<Point>(s_points)
+			.SetEquals(tree.Search())).IsTrue();
 
-		Assert.Equal(
-			s_points.Aggregate(Envelope.EmptyBounds, (e, p) => e.Extend(p.Envelope)),
-			tree.Envelope);
+		await Assert.That(tree.Envelope).IsEqualTo(s_points.Aggregate(Envelope.EmptyBounds, (e, p) => e.Extend(p.Envelope)));
 	}
 
 	[Test]
-	public void BulkLoadTestData()
+	public async Task BulkLoadTestData()
 	{
 		var tree = new RBush<Point>();
 		tree.BulkLoad(s_points);
 
-		Assert.Equal(s_points.Length, tree.Count);
-		Assert.True(new HashSet<Point>(s_points)
-			.SetEquals(tree.Search()));
+		await Assert.That(tree.Count).IsEqualTo(s_points.Length);
+		await Assert.That(new HashSet<Point>(s_points)
+			.SetEquals(tree.Search())).IsTrue();
 	}
 
 	[Test]
-	public void BulkLoadSplitsTreeProperly()
+	public async Task BulkLoadSplitsTreeProperly()
 	{
 		var tree = new RBush<Point>(maxEntries: 4);
 		tree.BulkLoad(s_points);
 		tree.BulkLoad(s_points);
 
-		Assert.Equal(s_points.Length * 2, tree.Count);
-		Assert.Equal(4, tree.Root.Height);
+		await Assert.That(tree.Count).IsEqualTo(s_points.Length * 2);
+		await Assert.That(tree.Root.Height).IsEqualTo(4);
 	}
 
 	[Test]
-	public void BulkLoadMergesTreesProperly()
+	public async Task BulkLoadMergesTreesProperly()
 	{
 		var smaller = GetPoints(10);
 		var tree1 = new RBush<Point>(maxEntries: 4);
@@ -104,25 +100,25 @@ public class RBushTests
 		tree2.BulkLoad(s_points);
 		tree2.BulkLoad(smaller);
 
-		Assert.True(tree1.Count == tree2.Count);
-		Assert.True(tree1.Root.Height == tree2.Root.Height);
+		await Assert.That(tree1.Count == tree2.Count).IsTrue();
+		await Assert.That(tree1.Root.Height == tree2.Root.Height).IsTrue();
 
 		var allPoints = new HashSet<Point>(s_points.Concat(smaller));
-		Assert.True(allPoints.SetEquals(tree1.Search()));
-		Assert.True(allPoints.SetEquals(tree2.Search()));
+		await Assert.That(allPoints.SetEquals(tree1.Search())).IsTrue();
+		await Assert.That(allPoints.SetEquals(tree2.Search())).IsTrue();
 	}
 
 	[Test]
-	public void SearchReturnsEmptyResultIfNothingFound()
+	public async Task SearchReturnsEmptyResultIfNothingFound()
 	{
 		var tree = new RBush<Point>(maxEntries: 4);
 		tree.BulkLoad(s_points);
 
-		Assert.Equal([], tree.Search(new Envelope(200, 200, 210, 210)));
+		await Assert.That(tree.Search(new Envelope(200, 200, 210, 210))).IsEmpty();
 	}
 
 	[Test]
-	public void SearchReturnsMatchingResults()
+	public async Task SearchReturnsMatchingResults()
 	{
 		var tree = new RBush<Point>(maxEntries: 4);
 		tree.BulkLoad(s_points);
@@ -131,11 +127,11 @@ public class RBushTests
 		var shouldFindPoints = new HashSet<Point>(s_points
 			.Where(p => p.Envelope.Intersects(searchEnvelope)));
 
-		Assert.True(shouldFindPoints.SetEquals(tree.Search(searchEnvelope)));
+		await Assert.That(shouldFindPoints.SetEquals(tree.Search(searchEnvelope))).IsTrue();
 	}
 
 	[Test]
-	public void BasicRemoveTest()
+	public async Task BasicRemoveTest()
 	{
 		var tree = new RBush<Point>(maxEntries: 4);
 		tree.BulkLoad(s_points);
@@ -153,34 +149,32 @@ public class RBushTests
 		var shouldFindPoints = new HashSet<Point>(s_points
 			.Skip(3).Take(len - 6));
 
-		Assert.True(shouldFindPoints.SetEquals(tree.Search()));
-		Assert.Equal(
-			shouldFindPoints.Aggregate(Envelope.EmptyBounds, (e, p) => e.Extend(p.Envelope)),
-			tree.Envelope);
+		await Assert.That(shouldFindPoints.SetEquals(tree.Search())).IsTrue();
+		await Assert.That(tree.Envelope).IsEqualTo(shouldFindPoints.Aggregate(Envelope.EmptyBounds, (e, p) => e.Extend(p.Envelope)));
 	}
 
 	[Test]
-	public void NonExistentItemCanBeDeleted()
+	public async Task NonExistentItemCanBeDeleted()
 	{
 		var tree = new RBush<Point>(maxEntries: 4);
 		tree.BulkLoad(s_points);
 
 		_ = tree.Delete(new Point(13, 13, 13, 13));
-		Assert.Equal(s_points.Length, tree.Count);
+		await Assert.That(tree.Count).IsEqualTo(s_points.Length);
 	}
 
 	[Test]
-	public void DeleteTreeIsEmptyShouldNotThrow()
+	public async Task DeleteTreeIsEmptyShouldNotThrow()
 	{
 		var tree = new RBush<Point>();
 
 		_ = tree.Delete(new Point(1, 1, 1, 1));
 
-		Assert.Equal(0, tree.Count);
+		await Assert.That(tree.Count).IsEqualTo(0);
 	}
 
 	[Test]
-	public void DeleteDeletingLastPointShouldNotThrow()
+	public async Task DeleteDeletingLastPointShouldNotThrow()
 	{
 		var tree = new RBush<Point>();
 		var p = new Point(1, 1, 1, 1);
@@ -188,22 +182,22 @@ public class RBushTests
 
 		_ = tree.Delete(p);
 
-		Assert.Equal(0, tree.Count);
+		await Assert.That(tree.Count).IsEqualTo(0);
 	}
 
 	[Test]
-	public void ClearWorks()
+	public async Task ClearWorks()
 	{
 		var tree = new RBush<Point>(maxEntries: 4);
 		tree.BulkLoad(s_points);
 		tree.Clear();
 
-		Assert.Equal(0, tree.Count);
-		Assert.Empty(tree.Root.Children);
+		await Assert.That(tree.Count).IsEqualTo(0);
+		await Assert.That(tree.Root.Children).IsEmpty();
 	}
 
 	[Test]
-	public void TestSearchAfterInsert()
+	public async Task TestSearchAfterInsert()
 	{
 		var maxEntries = 9;
 		var tree = new RBush<Point>(maxEntries);
@@ -215,12 +209,12 @@ public class RBushTests
 		foreach (var p in firstSet)
 			tree.Insert(p);
 
-		Assert.True(new HashSet<Point>(firstSet)
-			.SetEquals(tree.Search(firstSetEnvelope)));
+		await Assert.That(new HashSet<Point>(firstSet)
+			.SetEquals(tree.Search(firstSetEnvelope))).IsTrue();
 	}
 
 	[Test]
-	public void TestSearchAfterInsertWithSplitRoot()
+	public async Task TestSearchAfterInsertWithSplitRoot()
 	{
 		var maxEntries = 4;
 		var tree = new RBush<Point>(maxEntries);
@@ -241,12 +235,12 @@ public class RBushTests
 
 		// first 10 entries and last 5 entries are completely mutually exclusive
 		// so searching the bounds of the new set should only return the new set exactly
-		Assert.True(new HashSet<Point>(extraPointsSet)
-			.SetEquals(tree.Search(extraPointsSetEnvelope)));
+		await Assert.That(new HashSet<Point>(extraPointsSet)
+			.SetEquals(tree.Search(extraPointsSetEnvelope))).IsTrue();
 	}
 
 	[Test]
-	public void TestSearchAfterBulkLoadWithSplitRoot()
+	public async Task TestSearchAfterBulkLoadWithSplitRoot()
 	{
 		var maxEntries = 4;
 		var tree = new RBush<Point>(maxEntries);
@@ -265,12 +259,12 @@ public class RBushTests
 
 		// first 10 entries and last 5 entries are completely mutually exclusive
 		// so searching the bounds of the new set should only return the new set exactly
-		Assert.True(new HashSet<Point>(extraPointsSet)
-			.SetEquals(tree.Search(extraPointsSetEnvelope)));
+		await Assert.That(new HashSet<Point>(extraPointsSet)
+			.SetEquals(tree.Search(extraPointsSetEnvelope))).IsTrue();
 	}
 
 	[Test]
-	public void AdditionalRemoveTest()
+	public async Task AdditionalRemoveTest()
 	{
 		var tree = new RBush<Point>();
 		var numDelete = 18;
@@ -281,13 +275,13 @@ public class RBushTests
 		foreach (var p in s_points.Take(numDelete))
 			_ = tree.Delete(p);
 
-		Assert.Equal(s_points.Length - numDelete, tree.Count);
-		Assert.True(new HashSet<Point>(s_points.Skip(numDelete))
-			.SetEquals(tree.Search()));
+		await Assert.That(tree.Count).IsEqualTo(s_points.Length - numDelete);
+		await Assert.That(new HashSet<Point>(s_points.Skip(numDelete))
+			.SetEquals(tree.Search())).IsTrue();
 	}
 
 	[Test]
-	public void BulkLoadAfterDeleteTest1()
+	public async Task BulkLoadAfterDeleteTest1()
 	{
 		var pts = GetPoints(20);
 		var ptsDelete = pts.Take(18);
@@ -300,12 +294,12 @@ public class RBushTests
 
 		tree.BulkLoad(ptsDelete);
 
-		Assert.Equal(pts.Count, tree.Search().Count);
-		Assert.True(new HashSet<Point>(pts).SetEquals(tree.Search()));
+		await Assert.That(tree.Search().Count).IsEqualTo(pts.Count);
+		await Assert.That(new HashSet<Point>(pts).SetEquals(tree.Search())).IsTrue();
 	}
 
 	[Test]
-	public void BulkLoadAfterDeleteTest2()
+	public async Task BulkLoadAfterDeleteTest2()
 	{
 		var pts = GetPoints(20);
 		var ptsDelete = pts.Take(4);
@@ -318,13 +312,13 @@ public class RBushTests
 
 		tree.BulkLoad(ptsDelete);
 
-		Assert.Equal(pts.Count, tree.Search().Count);
-		Assert.True(new HashSet<Point>(pts)
-			.SetEquals(tree.Search()));
+		await Assert.That(tree.Search().Count).IsEqualTo(pts.Count);
+		await Assert.That(new HashSet<Point>(pts)
+			.SetEquals(tree.Search())).IsTrue();
 	}
 
 	[Test]
-	public void InsertAfterDeleteTest1()
+	public async Task InsertAfterDeleteTest1()
 	{
 		var pts = GetPoints(20);
 		var ptsDelete = pts.Take(18).ToList();
@@ -339,13 +333,13 @@ public class RBushTests
 		foreach (var item in ptsDelete)
 			tree.Insert(item);
 
-		Assert.Equal(pts.Count, tree.Search().Count);
-		Assert.True(new HashSet<Point>(pts)
-			.SetEquals(tree.Search()));
+		await Assert.That(tree.Search().Count).IsEqualTo(pts.Count);
+		await Assert.That(new HashSet<Point>(pts)
+			.SetEquals(tree.Search())).IsTrue();
 	}
 
 	[Test]
-	public void InsertAfterDeleteTest2()
+	public async Task InsertAfterDeleteTest2()
 	{
 		var pts = GetPoints(20);
 		var ptsDelete = pts.Take(4).ToList();
@@ -360,9 +354,9 @@ public class RBushTests
 		foreach (var item in ptsDelete)
 			tree.Insert(item);
 
-		Assert.Equal(pts.Count, tree.Search().Count);
-		Assert.True(new HashSet<Point>(pts)
-			.SetEquals(tree.Search()));
+		await Assert.That(tree.Search().Count).IsEqualTo(pts.Count);
+		await Assert.That(new HashSet<Point>(pts)
+			.SetEquals(tree.Search())).IsTrue();
 	}
 
 	private readonly List<Point> _missingEnvelopeTestData =
@@ -464,7 +458,7 @@ public class RBushTests
 	];
 
 	[Test]
-	public void MissingEnvelopeTestInsertIndividually()
+	public async Task MissingEnvelopeTestInsertIndividually()
 	{
 		var tree = new RBush<Point>();
 		foreach (var p in _missingEnvelopeTestData)
@@ -475,13 +469,11 @@ public class RBushTests
 			MinY: 31.87729923,
 			MaxX: 34.73274678,
 			MaxY: 31.87729923);
-		Assert.Equal(
-			expected: tree.Search().Count(p => p.Envelope.Intersects(envelope)),
-			actual: tree.Search(envelope).Count);
+		await Assert.That(tree.Search(envelope).Count).IsEqualTo(tree.Search().Count(p => p.Envelope.Intersects(envelope)));
 	}
 
 	[Test]
-	public void TestBulk()
+	public async Task TestBulk()
 	{
 		var tree = new RBush<Point>();
 		tree.BulkLoad(_missingEnvelopeTestData);
@@ -491,91 +483,97 @@ public class RBushTests
 			MinY: 31.87729923,
 			MaxX: 34.73274678,
 			MaxY: 31.87729923);
-		Assert.Equal(
-			expected: tree.Search().Count(p => p.Envelope.Intersects(envelope)),
-			actual: tree.Search(envelope).Count);
+		await Assert.That(tree.Search(envelope).Count).IsEqualTo(tree.Search().Count(p => p.Envelope.Intersects(envelope)));
 	}
 
 	[Test]
-	public void DeletingAllItemsResetsTree()
+	public async Task DeletingAllItemsResetsTree()
 	{
 		var data = GetPoints(100);
 		var tree = new RBush<Point>();
 		tree.BulkLoad(data);
-		Assert.True(tree.Root.Height > 1);
+		await Assert.That(tree.Root.Height > 1).IsTrue();
 
 		foreach (var p in data)
-			Assert.True(tree.Delete(p));
+			await Assert.That(tree.Delete(p)).IsTrue();
 
-		Assert.Equal(0, tree.Count);
-		Assert.True(tree.Root.IsLeaf);
-		Assert.Equal(0, tree.Root.Children.Count);
-		Assert.Empty(tree.Search());
+		await Assert.That(tree.Count).IsEqualTo(0);
+		await Assert.That(tree.Root.IsLeaf).IsTrue();
+		await Assert.That(tree.Root.Children.Count).IsEqualTo(0);
+		await Assert.That(tree.Search()).IsEmpty();
 	}
 
 	[Test]
-	public void DeletingMostItemsShrinksTree()
+	public async Task DeletingMostItemsShrinksTree()
 	{
 		var data = GetPoints(100);
 		var tree = new RBush<Point>();
 		tree.BulkLoad(data);
 
 		foreach (var p in data.Skip(1))
-			Assert.True(tree.Delete(p));
+			await Assert.That(tree.Delete(p)).IsTrue();
 
-		Assert.Equal(1, tree.Count);
-		Assert.Equal(1, tree.Root.Height);
-		Assert.Single(tree.Search());
+		await Assert.That(tree.Count).IsEqualTo(1);
+		await Assert.That(tree.Root.Height).IsEqualTo(1);
+		await Assert.That(tree.Search()).HasSingleItem();
 	}
 
 	[Test]
-	public void InsertAndSearchWorkAfterHeavyDeletion()
+	public async Task InsertAndSearchWorkAfterHeavyDeletion()
 	{
 		var data = GetPoints(100);
 		var tree = new RBush<Point>();
 		tree.BulkLoad(data);
 
 		foreach (var p in data.Take(90))
-			Assert.True(tree.Delete(p));
+			await Assert.That(tree.Delete(p)).IsTrue();
 
 		tree.BulkLoad(data.Take(90));
 		tree.Insert(new Point(minX: 500, minY: 500, maxX: 500, maxY: 500));
 
-		Assert.Equal(101, tree.Count);
-		Assert.Equal(101, tree.Search().Count);
-		Assert.Single(tree.Search(new Envelope(MinX: 499, MinY: 499, MaxX: 501, MaxY: 501)));
+		await Assert.That(tree.Count).IsEqualTo(101);
+		await Assert.That(tree.Search().Count).IsEqualTo(101);
+		await Assert.That(tree.Search(new Envelope(MinX: 499, MinY: 499, MaxX: 501, MaxY: 501))).HasSingleItem();
 	}
 
 	[Test]
-	public void BulkLoadOfExactPowerOfMaxEntriesDoesNotAddExtraLevel()
+	public async Task BulkLoadOfExactPowerOfMaxEntriesDoesNotAddExtraLevel()
 	{
 		// 5^3 = 125; Math.Log(125) / Math.Log(5) evaluates to 3.0000000000000004
 		var tree = new RBush<Point>(5);
 		tree.BulkLoad(GetPoints(125));
 
-		Assert.Equal(3, tree.Root.Height);
-		Assert.Equal(125, tree.Count);
-		Assert.Equal(125, tree.Search().Count);
+		await Assert.That(tree.Root.Height).IsEqualTo(3);
+		await Assert.That(tree.Count).IsEqualTo(125);
+		await Assert.That(tree.Search().Count).IsEqualTo(125);
 	}
 
 	[Test]
-	public void ConstructorRejectsNullComparer() =>
-		Assert.Throws<ArgumentNullException>("comparer", () => new RBush<Point>(9, null!));
+	public async Task ConstructorRejectsNullComparer() =>
+		await Assert.That(() => { _ = new RBush<Point>(9, null!); })
+			.Throws<ArgumentNullException>()
+			.WithParameterName("comparer");
 
 	[Test]
-	public void BulkLoadRejectsNullItems() =>
-		Assert.Throws<ArgumentNullException>("items", () => new RBush<Point>().BulkLoad(null!));
+	public async Task BulkLoadRejectsNullItems() =>
+		await Assert.That(() => { new RBush<Point>().BulkLoad(null!); })
+			.Throws<ArgumentNullException>()
+			.WithParameterName("items");
 
 	[Test]
-	public void InsertRejectsNullItem() =>
-		Assert.Throws<ArgumentNullException>("item", () => new RBush<Point>().Insert(null!));
+	public async Task InsertRejectsNullItem() =>
+		await Assert.That(() => { new RBush<Point>().Insert(null!); })
+			.Throws<ArgumentNullException>()
+			.WithParameterName("item");
 
 	[Test]
-	public void DeleteRejectsNullItem() =>
-		Assert.Throws<ArgumentNullException>("item", () => new RBush<Point>().Delete(null!));
+	public async Task DeleteRejectsNullItem() =>
+		await Assert.That(() => { _ = new RBush<Point>().Delete(null!); })
+			.Throws<ArgumentNullException>()
+			.WithParameterName("item");
 
 	[Test]
-	public void ConcurrentSearchesReturnConsistentResults()
+	public async Task ConcurrentSearchesReturnConsistentResults()
 	{
 		var tree = new RBush<Point>();
 		tree.BulkLoad(GetPoints(2000));
@@ -599,14 +597,14 @@ public class RBushTests
 			}
 		});
 
-		Assert.Equal(0, failures);
+		await Assert.That(failures).IsEqualTo(0);
 	}
 
 	[Test]
 	[Arguments(9)]
 	[Arguments(40)]
 	[Arguments(200)]
-	public void InsertWorksForSmallAndLargeNodeSizes(int maxEntries)
+	public async Task InsertWorksForSmallAndLargeNodeSizes(int maxEntries)
 	{
 		// maxEntries above ~31 makes node splits use the pooled scratch buffer
 		var tree = new RBush<Point>(maxEntries);
@@ -614,13 +612,13 @@ public class RBushTests
 		foreach (var p in points)
 			tree.Insert(p);
 
-		Assert.Equal(1500, tree.Count);
-		Assert.Equal(1500, tree.Search().Count);
+		await Assert.That(tree.Count).IsEqualTo(1500);
+		await Assert.That(tree.Search().Count).IsEqualTo(1500);
 
 		foreach (var box in new[] { new Envelope(0, 0, 100, 100), new Envelope(700, 700, 1400, 1400), new Envelope(-5, -5, 2000, 2000) })
 		{
 			var expected = points.Count(p => p.Envelope.Intersects(box));
-			Assert.Equal(expected, tree.Search(box).Count);
+			await Assert.That(tree.Search(box).Count).IsEqualTo(expected);
 		}
 	}
 }

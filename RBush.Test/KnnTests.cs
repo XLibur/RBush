@@ -1,4 +1,4 @@
-using Xunit;
+using TUnit.Assertions.Enums;
 
 namespace RBush.Test;
 
@@ -23,7 +23,7 @@ public class KnnTests
 		});
 
 	[Test]
-	public void FindsNNeighbors()
+	public async Task FindsNNeighbors()
 	{
 		var bush = new RBush<Point>();
 		bush.BulkLoad(s_points);
@@ -32,7 +32,7 @@ public class KnnTests
 			.OrderBy(b => b.DistanceTo(40, 40))
 			.Take(10)
 			.ToList();
-		Assert.Equal(expected, result);
+		await Assert.That(result).IsEquivalentTo(expected, CollectionOrdering.Matching);
 	}
 
 	[Test]
@@ -48,7 +48,7 @@ public class KnnTests
 	/// This test is not correct in original javascript library
 	/// </summary>
 	[Test]
-	public void FindAllNeighborsForMaxDistance()
+	public async Task FindAllNeighborsForMaxDistance()
 	{
 		var bush = new RBush<Point>();
 		bush.BulkLoad(s_points);
@@ -58,11 +58,11 @@ public class KnnTests
 			.Where(b => b.DistanceTo(40, 40) <= 10)
 			.OrderBy(b => b.DistanceTo(40, 40))
 			.ToList();
-		Assert.Equal(expected, result);
+		await Assert.That(result).IsEquivalentTo(expected, CollectionOrdering.Matching);
 	}
 
 	[Test]
-	public void FindNNeighborsForMaxDistance()
+	public async Task FindNNeighborsForMaxDistance()
 	{
 		var bush = new RBush<Point>();
 		bush.BulkLoad(s_points);
@@ -73,7 +73,7 @@ public class KnnTests
 			.Take(1)
 			.ToList();
 
-		Assert.Equal(expected, result);
+		await Assert.That(result).IsEquivalentTo(expected, CollectionOrdering.Matching);
 	}
 
 	[Test]
@@ -93,7 +93,7 @@ public class KnnTests
 		});
 
 	[Test]
-	public void FindNeighborsThatSatisfyAGivenPredicate()
+	public async Task FindNeighborsThatSatisfyAGivenPredicate()
 	{
 		var bush = new RBush<Point>();
 		bush.BulkLoad(s_richData);
@@ -104,7 +104,7 @@ public class KnnTests
 			.OrderBy(b => b.DistanceTo(2, 4))
 			.Take(1)
 			.ToList();
-		Assert.Equal(expected, result);
+		await Assert.That(result).IsEquivalentTo(expected, CollectionOrdering.Matching);
 	}
 
 	// The original LINQ implementation, kept as the reference for the equivalence test.
@@ -131,7 +131,7 @@ public class KnnTests
 	}
 
 	[Test]
-	public void MatchesReferenceImplementationIncludingTies()
+	public async Task MatchesReferenceImplementationIncludingTies()
 	{
 		var rng = new Random(1234);
 		// integer grid coordinates force many equal distances (ties)
@@ -161,14 +161,14 @@ public class KnnTests
 				var qy = rng.Next(-5, 35);
 				var expected = ReferenceKnn(tree, k, qx, qy, maxDistance, predicate);
 				var actual = tree.Knn(k, qx, qy, maxDistance, predicate);
-				Assert.Equal(expected.Count, actual.Count);
+				await Assert.That(actual.Count).IsEqualTo(expected.Count);
 				for (var i = 0; i < expected.Count; i++)
-					Assert.Same(expected[i], actual[i]);
+					await Assert.That(actual[i]).IsSameReferenceAs(expected[i]);
 			}
 		}
 	}
 
 	[Test]
-	public void ReturnsEmptyForEmptyTree() =>
-		Assert.Empty(new RBush<Point>().Knn(5, 0, 0));
+	public async Task ReturnsEmptyForEmptyTree() =>
+		await Assert.That(new RBush<Point>().Knn(5, 0, 0)).IsEmpty();
 }
