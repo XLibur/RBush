@@ -495,4 +495,20 @@ public class RBushTests
 			expected: tree.Search().Count(p => p.Envelope.Intersects(envelope)),
 			actual: tree.Search(envelope).Count);
 	}
+
+	[Test]
+	public void ConstructorRejectsNullComparer() =>
+		Assert.Throws<ArgumentNullException>("comparer", () => new RBush<Point>(9, null!));
+
+	[Test]
+	public void BulkLoadRejectsNullItems() =>
+		Assert.Throws<ArgumentNullException>("items", () => new RBush<Point>().BulkLoad(null!));
+
+	[Test]
+	public void InsertRejectsNullItem() =>
+		Assert.Throws<ArgumentNullException>("item", () => new RBush<Point>().Insert(null!));
+
+	[Test]
+	public void DeleteRejectsNullItem() =>
+		Assert.Throws<ArgumentNullException>("item", () => new RBush<Point>().Delete(null!));
 }
