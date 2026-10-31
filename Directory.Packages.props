@@ -5,14 +5,10 @@
   
   <ItemGroup>
 	<PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
-	<PackageVersion Include="coverlet.collector" Version="6.0.2" />
-	<PackageVersion Include="coverlet.msbuild" Version="6.0.2" />
 	<PackageVersion Include="DotNet.ReproducibleBuilds" Version="1.2.25" />
-	<PackageVersion Include="GitHubActionsTestLogger" Version="2.4.1" />
 	<PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
 	<PackageVersion Include="MinVer" Version="6.0.0" />
-	<PackageVersion Include="TUnit.Engine" Version="0.2.212" />
-	<PackageVersion Include="xunit.v3.assert" Version="0.5.0-pre.27" />
+	<PackageVersion Include="TUnit" Version="1.76.45" />
   </ItemGroup>
   
   <ItemGroup>
