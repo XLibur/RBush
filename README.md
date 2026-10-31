@@ -11,8 +11,8 @@ It's most commonly used in maps and data visualizations.
 
 This code has been copied over from the Javascript [RBush](https://github.com/mourner/rbush) library.
 
-[![Build status](https://github.com/viceroypenguin/RBush/actions/workflows/build.yml/badge.svg)](https://github.com/viceroypenguin/RBush/actions)
-[![License](https://img.shields.io/github/license/viceroypenguin/RBush)](license.txt)
+[![Build status](https://github.com/XLibur/RBush/actions/workflows/build.yml/badge.svg)](https://github.com/XLibur/RBush/actions)
+[![License](https://img.shields.io/github/license/XLibur/RBush)](LICENSE)
 
 > **Note:** This repository is a fork of [viceroypenguin/RBush](https://github.com/viceroypenguin/RBush) (`master` branch).
 
