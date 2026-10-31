@@ -118,6 +118,12 @@ equality testing.
 tree.Clear();
 ```
 
+## Thread Safety
+
+Any number of threads can search the tree at the same time (`Search` and `Knn`) as long as no thread is changing it. `Insert`, `BulkLoad`, `Delete` and `Clear` need exclusive access: do not run them at the same time as each other or as a search.
+
+An item's `Envelope` must not change while the item is in the tree. To move an item, delete it, change it, and insert it again.
+
 ## Credit
 
 This code was adapted from a Javascript library called [RBush](https://github.com/mourner/rbush). The only
