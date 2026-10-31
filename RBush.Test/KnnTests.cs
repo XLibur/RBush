@@ -169,6 +169,114 @@ public class KnnTests
 	}
 
 	[Test]
+	[Arguments(4)]
+	[Arguments(9)]
+	[Arguments(64)]
+	public async Task MatchesReferenceForInsertedAndDeletedTrees(int maxEntries)
+	{
+		var rng = new Random(99);
+		var points = Enumerable.Range(0, 800)
+			.Select(_ =>
+			{
+				var px = rng.Next(0, 25);
+				var py = rng.Next(0, 25);
+				return new Point(px, py, px, py);
+			})
+			.ToArray();
+
+		var tree = new RBush<Point>(maxEntries);
+		foreach (var p in points)
+			tree.Insert(p);
+		foreach (var p in points.Where((_, i) => i % 3 == 0))
+			_ = tree.Delete(p);
+
+		for (var q = 0; q < 60; q++)
+		{
+			var qx = rng.Next(-3, 28);
+			var qy = rng.Next(-3, 28);
+			var k = rng.Next(0, 40);
+			double? maxDistance = q % 2 == 0 ? null : rng.Next(0, 10);
+			var expected = ReferenceKnn(tree, k, qx, qy, maxDistance, predicate: null);
+			var actual = tree.Knn(k, qx, qy, maxDistance);
+			await Assert.That(actual.Count).IsEqualTo(expected.Count);
+			for (var i = 0; i < expected.Count; i++)
+				await Assert.That(actual[i]).IsSameReferenceAs(expected[i]);
+		}
+	}
+
+	[Test]
+	public async Task OnlyCallsPredicateForCandidatesThatCanEnterTheResult()
+	{
+		var tree = new RBush<Point>();
+		tree.BulkLoad(s_points);
+
+		var calls = 0;
+		var result = tree.Knn(3, 40, 40, predicate: _ =>
+		{
+			calls++;
+			return true;
+		});
+
+		await Assert.That(result.Count).IsEqualTo(3);
+		await Assert.That(calls).IsEqualTo(3);
+	}
+
+	[Test]
+	public async Task FallsBackForOtherSpatialIndexes()
+	{
+		var tree = new RBush<Point>();
+		tree.BulkLoad(s_points);
+		var wrapper = new IndexWrapper(tree);
+
+		var expected = tree.Knn(10, 40, 40, maxDistance: 30);
+		var actual = wrapper.Knn(10, 40, 40, maxDistance: 30);
+		await Assert.That(actual).IsEquivalentTo(expected, CollectionOrdering.Matching);
+	}
+
+	[Test]
+	public async Task ConcurrentQueriesReturnCorrectResults()
+	{
+		var rng = new Random(7);
+		var points = Enumerable.Range(0, 5000)
+			.Select(_ =>
+			{
+				var px = rng.NextDouble() * 1000;
+				var py = rng.NextDouble() * 1000;
+				return new Point(px, py, px, py);
+			})
+			.ToArray();
+		var tree = new RBush<Point>();
+		tree.BulkLoad(points);
+
+		var failures = 0;
+		_ = Parallel.For(0, 8, t =>
+		{
+			var local = new Random(t);
+			for (var i = 0; i < 200; i++)
+			{
+				var qx = local.NextDouble() * 1000;
+				var qy = local.NextDouble() * 1000;
+				var expected = ReferenceKnn(tree, 10, qx, qy, maxDistance: null, predicate: null);
+				var actual = tree.Knn(10, qx, qy);
+				if (!expected.SequenceEqual(actual))
+					_ = Interlocked.Increment(ref failures);
+			}
+
+		});
+
+		await Assert.That(failures).IsEqualTo(0);
+	}
+
+	private sealed class IndexWrapper(RBush<Point> inner) : ISpatialIndex<Point>
+	{
+		public IReadOnlyList<Point> Search() => inner.Search();
+
+		public IReadOnlyList<Point> Search(in Envelope boundingBox) => inner.Search(boundingBox);
+
+		public IReadOnlyList<Point> SearchContained(in Envelope boundingBox) => inner.SearchContained(boundingBox);
+	}
+
+	[Test]
 	public async Task ReturnsEmptyForEmptyTree() =>
 		await Assert.That(new RBush<Point>().Knn(5, 0, 0)).IsEmpty();
 }
