@@ -1,3 +1,5 @@
+using System.Buffers;
+
 namespace RBush;
 
 public partial class RBush<T>
@@ -177,34 +179,50 @@ public partial class RBush<T>
 		// suffix[i] encloses children[i..]; left is extended incrementally.
 		// Candidates are visited in ascending order and only a strictly better
 		// one replaces the current best, so ties keep the lowest index.
-		var suffix = new Envelope[count + 1];
-		suffix[count] = Envelope.EmptyBounds;
-		for (var i = count - 1; i >= _minEntries; i--)
-			suffix[i] = suffix[i + 1].Extend(children[i].Envelope);
+		// Small scratch buffer on the stack; fall back to the pool for unusually
+		// large nodes (a custom, large maxEntries).
+		const int StackLimit = 32;
+		Envelope[]? rented = null;
+		Span<Envelope> suffix = count + 1 <= StackLimit
+			? stackalloc Envelope[StackLimit]
+			: (rented = ArrayPool<Envelope>.Shared.Rent(count + 1));
 
-		var left = Envelope.EmptyBounds;
-		for (var i = 0; i < _minEntries; i++)
-			left = left.Extend(children[i].Envelope);
-
-		var bestIndex = _minEntries;
-		var bestOverlap = double.MaxValue;
-		var bestArea = double.MaxValue;
-		for (var i = _minEntries; i < count; i++)
+		try
 		{
-			var right = suffix[i];
-			var overlap = left.Intersection(right).Area;
-			var totalArea = left.Area + right.Area;
-			if (overlap < bestOverlap || (overlap == bestOverlap && totalArea < bestArea))
+			suffix[count] = Envelope.EmptyBounds;
+			for (var i = count - 1; i >= _minEntries; i--)
+				suffix[i] = suffix[i + 1].Extend(children[i].Envelope);
+
+			var left = Envelope.EmptyBounds;
+			for (var i = 0; i < _minEntries; i++)
+				left = left.Extend(children[i].Envelope);
+
+			var bestIndex = _minEntries;
+			var bestOverlap = double.MaxValue;
+			var bestArea = double.MaxValue;
+			for (var i = _minEntries; i < count; i++)
 			{
-				bestIndex = i;
-				bestOverlap = overlap;
-				bestArea = totalArea;
+				var right = suffix[i];
+				var overlap = left.Intersection(right).Area;
+				var totalArea = left.Area + right.Area;
+				if (overlap < bestOverlap || (overlap == bestOverlap && totalArea < bestArea))
+				{
+					bestIndex = i;
+					bestOverlap = overlap;
+					bestArea = totalArea;
+				}
+
+				left = left.Extend(children[i].Envelope);
 			}
 
-			left = left.Extend(children[i].Envelope);
+			return bestIndex;
 		}
-
-		return bestIndex;
+		finally
+		{
+			// Envelope holds no references, so there is nothing to clear.
+			if (rented is not null)
+				ArrayPool<Envelope>.Shared.Return(rented);
+		}
 	}
 	#endregion
 	#endregion
