@@ -52,6 +52,8 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 	/// <param name="comparer"></param>
 	public RBush(int maxEntries, IEqualityComparer<T> comparer)
 	{
+		ArgumentNullException.ThrowIfNull(comparer);
+
 		_comparer = comparer;
 		_maxEntries = Math.Max(MinimumMaxEntries, maxEntries);
 		_minEntries = Math.Max(MinimumMinEntries, (int)Math.Ceiling(_maxEntries * DefaultFillFactor));
@@ -103,6 +105,10 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 	/// </param>
 	public void Insert(T item)
 	{
+		// Guard on `is null` first so value-type T is never boxed.
+		if (item is null)
+			ArgumentNullException.ThrowIfNull(item);
+
 		Insert(item, Root.Height);
 		Count++;
 	}
@@ -119,6 +125,8 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 	/// </remarks>
 	public void BulkLoad(IEnumerable<T> items)
 	{
+		ArgumentNullException.ThrowIfNull(items);
+
 		var data = items.ToArray();
 		if (data.Length == 0) return;
 
@@ -180,6 +188,10 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 	/// <returns><see langword="bool" /> indicating whether the item was deleted.</returns>
 	public bool Delete(T item)
 	{
+		// Guard on `is null` first so value-type T is never boxed.
+		if (item is null)
+			ArgumentNullException.ThrowIfNull(item);
+
 		var deleted = DoDelete(Root, item);
 		if (deleted)
 			CondenseRoot();

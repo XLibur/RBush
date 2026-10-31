@@ -545,4 +545,32 @@ public class RBushTests
 		Assert.Equal(101, tree.Search().Count);
 		Assert.Single(tree.Search(new Envelope(MinX: 499, MinY: 499, MaxX: 501, MaxY: 501)));
 	}
+
+	[Test]
+	public void BulkLoadOfExactPowerOfMaxEntriesDoesNotAddExtraLevel()
+	{
+		// 5^3 = 125; Math.Log(125) / Math.Log(5) evaluates to 3.0000000000000004
+		var tree = new RBush<Point>(5);
+		tree.BulkLoad(GetPoints(125));
+
+		Assert.Equal(3, tree.Root.Height);
+		Assert.Equal(125, tree.Count);
+		Assert.Equal(125, tree.Search().Count);
+	}
+
+	[Test]
+	public void ConstructorRejectsNullComparer() =>
+		Assert.Throws<ArgumentNullException>("comparer", () => new RBush<Point>(9, null!));
+
+	[Test]
+	public void BulkLoadRejectsNullItems() =>
+		Assert.Throws<ArgumentNullException>("items", () => new RBush<Point>().BulkLoad(null!));
+
+	[Test]
+	public void InsertRejectsNullItem() =>
+		Assert.Throws<ArgumentNullException>("item", () => new RBush<Point>().Insert(null!));
+
+	[Test]
+	public void DeleteRejectsNullItem() =>
+		Assert.Throws<ArgumentNullException>("item", () => new RBush<Point>().Delete(null!));
 }
