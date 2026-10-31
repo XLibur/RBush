@@ -1,17 +1,15 @@
 <Project>
   <PropertyGroup>
-	<ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
+    <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
-  
   <ItemGroup>
-	<PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
-	<PackageVersion Include="DotNet.ReproducibleBuilds" Version="1.2.25" />
-	<PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
-	<PackageVersion Include="MinVer" Version="6.0.0" />
-	<PackageVersion Include="TUnit" Version="1.76.45" />
+    <PackageVersion Include="BenchmarkDotNet" Version="0.15.8" />
+    <PackageVersion Include="DotNet.ReproducibleBuilds" Version="2.0.5" />
+    <PackageVersion Include="Microsoft.SourceLink.GitHub" Version="8.0.0" />
+    <PackageVersion Include="MinVer" Version="8.0.0" />
+    <PackageVersion Include="TUnit" Version="1.77.0" />
   </ItemGroup>
-  
   <ItemGroup>
-	<GlobalPackageReference Include="Meziantou.Analyzer" Version="2.0.179" />
+    <GlobalPackageReference Include="Meziantou.Analyzer" Version="2.0.179" />
   </ItemGroup>
 </Project>
