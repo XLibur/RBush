@@ -249,7 +249,7 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 		{
 			// Drop children that became empty so they are neither kept in
 			// memory nor visited by later inserts and searches.
-			_ = node.Items.RemoveAll(n => ((Node)n).Items.Count == 0);
+			_ = node.Items.RemoveAll(static n => ((Node)n).Items.Count == 0);
 			node.ResetEnvelope();
 		}
 

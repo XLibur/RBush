@@ -253,13 +253,14 @@ public partial class RBush<T>
 		var subSortLength = nodeSize * (int)Math.Ceiling(Math.Sqrt(maxEntries));
 
 		var children = new List<ISpatialData>(maxEntries);
-		foreach (var subData in Chunk(byX, subSortLength))
+		for (var subStart = 0; subStart < byX.Count; subStart += subSortLength)
 		{
+			var subData = Slice(byX, subStart, subSortLength);
 			var byY = new ArraySegment<T>(subData.OrderBy(d => d.Envelope.MinY).ToArray());
 
-			foreach (var nodeData in Chunk(byY, nodeSize))
+			for (var nodeStart = 0; nodeStart < byY.Count; nodeStart += nodeSize)
 			{
-				children.Add(BuildNodes(nodeData, height - 1, _maxEntries));
+				children.Add(BuildNodes(Slice(byY, nodeStart, nodeSize), height - 1, _maxEntries));
 			}
 		}
 
@@ -275,16 +276,9 @@ public partial class RBush<T>
 		return list;
 	}
 
-	private static IEnumerable<ArraySegment<T>> Chunk(ArraySegment<T> values, int chunkSize)
-	{
-		var start = 0;
-		while (start < values.Count)
-		{
-			var len = Math.Min(values.Count - start, chunkSize);
-			yield return new ArraySegment<T>(values.Array!, values.Offset + start, len);
-			start += chunkSize;
-		}
-	}
+	// A view of at most chunkSize items starting at start; no copy.
+	private static ArraySegment<T> Slice(ArraySegment<T> values, int start, int chunkSize) =>
+		new(values.Array!, values.Offset + start, Math.Min(values.Count - start, chunkSize));
 	#endregion
 
 	// Indexed loop: avoids boxing List<T>'s enumerator on every ResetEnvelope.
@@ -293,15 +287,6 @@ public partial class RBush<T>
 		var envelope = Envelope.EmptyBounds;
 		for (var i = 0; i < items.Count; i++)
 			envelope = envelope.Extend(items[i].Envelope);
-
-		return envelope;
-	}
-
-	private static Envelope GetEnclosingEnvelope(IEnumerable<ISpatialData> items)
-	{
-		var envelope = Envelope.EmptyBounds;
-		foreach (var data in items)
-			envelope = envelope.Extend(data.Envelope);
 
 		return envelope;
 	}

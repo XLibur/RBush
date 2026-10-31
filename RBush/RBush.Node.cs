@@ -23,12 +23,6 @@ public partial class RBush<T>
 			_envelope = Envelope.Extend(node.Envelope);
 		}
 
-		internal void Remove(ISpatialData node)
-		{
-			_ = Items.Remove(node);
-			ResetEnvelope();
-		}
-
 		internal void RemoveRange(int index, int count)
 		{
 			Items.RemoveRange(index, count);
