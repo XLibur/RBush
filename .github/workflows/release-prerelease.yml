@@ -1,0 +1,46 @@
+name: Pre-release
+
+# Publishes an alpha, beta or rc build to NuGet from any branch.
+#
+# This only calls release.yml. NuGet trusted publishing is bound to the workflow file named in
+# the policy (release.yml), and a token requested from here would be rejected as coming from
+# release-prerelease.yml. release.yml builds, tests, packs, checks the version is a pre-release
+# and pushes; with a pre-release label it skips the tag checks and the GitHub Release.
+
+on:
+  workflow_dispatch:
+    inputs:
+      prerelease-label:
+        description: 'Pre-release label (alpha, beta, rc)'
+        required: true
+        default: 'alpha'
+        type: choice
+        options:
+          - alpha
+          - beta
+          - rc
+      dry-run:
+        description: 'Dry run (build, test, pack — skip NuGet publish)'
+        required: false
+        default: false
+        type: boolean
+
+permissions: {}
+
+concurrency:
+  group: prerelease
+  cancel-in-progress: false
+
+jobs:
+  prerelease:
+    name: Pre-release
+    uses: ./.github/workflows/release.yml
+    with:
+      prerelease-label: ${{ inputs.prerelease-label }}
+      dry-run: ${{ inputs.dry-run }}
+    # release.yml declares contents: write and id-token: write, and a caller has to grant at
+    # least that. The steps that write to the repository are skipped in a pre-release.
+    permissions:
+      contents: write
+      id-token: write
+    secrets: inherit

@@ -1,47 +1,203 @@
 name: Release
 
-on: 
-  workflow_dispatch:
+# One tag releases the package: push `v1.2.0`, or run Publish Release, which tags and then
+# calls this workflow. MinVer reads the tag, so the tag is the version.
+#
+# The glob requires a digit after the `v` so a bare `v*` cannot match an unrelated tag.
+#
+# Pre-releases (alpha, beta, rc) run through this same file, called from release-prerelease.yml
+# with `prerelease-label` set. NuGet trusted publishing is bound to this workflow file, so every
+# NuGet push has to come from here. In that mode there is no tag: the version comes from MinVer,
+# and the tag checks, the GitHub Release and the release assets are skipped.
+on:
   push:
-    tags:
-      - '**'
+    tags: ['v[0-9]*']
+  # Called by release-publish.yml and release-prerelease.yml. A tag pushed with GITHUB_TOKEN does
+  # not trigger the `push: tags` trigger above, so the call has to be explicit.
+  workflow_call:
+    inputs:
+      tag:
+        description: 'Tag to release (stable releases)'
+        required: false
+        type: string
+      prerelease-label:
+        description: 'Pre-release label (alpha, beta, rc). Set for a pre-release, leave empty for a stable release.'
+        required: false
+        default: ''
+        type: string
+      dry-run:
+        description: 'Build, test and pack, but skip the NuGet push'
+        required: false
+        default: false
+        type: boolean
 
 permissions:
   contents: write
+  id-token: write
+
+concurrency:
+  group: release
+  cancel-in-progress: false
 
 jobs:
   release:
-
     runs-on: ubuntu-latest
 
+    env:
+      TAG: ${{ inputs.tag || github.ref_name }}
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      # Only used when there is no tag on the commit. A tagged build takes its version from the tag.
+      MinVerDefaultPreReleaseIdentifiers: ${{ inputs.prerelease-label || 'alpha' }}
+
     steps:
-    - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
+        with:
+          ref: ${{ inputs.tag || github.ref }}
+          fetch-depth: 0
+          fetch-tags: true
 
-    - name: Setup .NET
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: |
-          8.0.x
-          10.0.x
+      # The tag glob above also matches pre-release tags such as v1.3.0-rc.1. Those go
+      # through the Pre-release workflow, never through a stable release.
+      - name: Check tag is a stable version on main
+        if: ${{ !inputs.prerelease-label }}
+        run: |
+          if ! printf '%s' "$TAG" | grep -qE '^v[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::error::$TAG is not a stable vMAJOR.MINOR.PATCH tag. Pre-releases go through the Pre-release workflow."
+            exit 1
+          fi
+          git fetch --no-tags origin main
+          if ! git merge-base --is-ancestor HEAD origin/main; then
+            echo "::error::$TAG is not on main — refusing to release"
+            exit 1
+          fi
 
-    - name: Setup .NET 11 (preview/RC)
-      uses: actions/setup-dotnet@v4
-      with:
-        dotnet-version: 11.0.x
-        dotnet-quality: preview
+      # Captured before publishing, because once this release is published it
+      # becomes "latest" and can no longer serve as the previous tag.
+      - name: Resolve previous release tag
+        if: ${{ !inputs.prerelease-label }}
+        id: previous
+        run: |
+          prev=$(gh release list --repo "$GITHUB_REPOSITORY" --exclude-drafts --exclude-pre-releases \
+                   --limit 20 --json tagName --jq '[.[] | select(.tagName | test("^v[0-9]"))] | .[0].tagName // ""')
+          echo "tag=$prev" >> "$GITHUB_OUTPUT"
+          echo "Previous release tag: ${prev:-<none>}"
 
-    - name: Restore dependencies
-      run: dotnet restore
-    - name: Build
-      run: dotnet build -c Release --no-restore
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v6
+        with:
+          dotnet-version: |
+            8.0.x
+            10.0.x
+            11.0.x
+          dotnet-quality: preview
 
-    - name: Package 
-      run: dotnet pack -c Release --no-build --property:PackageOutputPath=../nupkgs
-    - name: Push to Nuget
-      run: dotnet nuget push "./nupkgs/*.nupkg" --source "https://api.nuget.org/v3/index.json" --api-key ${{ secrets.NUGETPUBLISHKEY }}
+      - name: Build
+        run: dotnet build RBush.slnx --configuration Release
 
-    - name: Create Release
-      uses: ncipollo/release-action@v1
-      with:
-        generateReleaseNotes: 'true'
-        makeLatest: 'true'
+      - name: Test
+        run: dotnet test --configuration Release --no-build
+
+      - name: Pack
+        run: dotnet pack RBush/RBush.csproj --configuration Release --no-build --output ./artifacts
+
+      - name: Show package version
+        run: ls -la ./artifacts/
+
+      # The package must carry the tag's version. A mismatch means MinVer did not see
+      # the tag, which would publish a prerelease-versioned package.
+      - name: Verify package version matches the tag
+        if: ${{ !inputs.prerelease-label }}
+        run: |
+          expected=${TAG#v}
+          status=0
+          for package in ./artifacts/*.nupkg; do
+            name=$(basename "$package" .nupkg)
+            if [ "${name%.$expected}" = "$name" ]; then
+              echo "::error::$name is not version $expected"
+              status=1
+            fi
+          done
+          if [ "$status" -ne 0 ]; then
+            echo "::error::Package version does not match tag $TAG — refusing to publish"
+            exit 1
+          fi
+          echo "Package is version $expected"
+
+      # On a commit that sits exactly on a stable tag MinVer yields a stable version, and a
+      # stable version must only be published by Publish Release.
+      - name: Verify the package is a pre-release
+        if: ${{ inputs.prerelease-label }}
+        run: |
+          status=0
+          for package in ./artifacts/*.nupkg; do
+            name=$(basename "$package" .nupkg)
+            if ! printf '%s' "$name" | grep -qE '\.[0-9]+\.[0-9]+\.[0-9]+-[0-9A-Za-z.-]+$'; then
+              echo "::error::$name is not a pre-release version — use Publish Release for stable versions"
+              status=1
+            fi
+          done
+          exit $status
+
+      - name: NuGet login
+        if: ${{ !inputs.dry-run }}
+        uses: NuGet/login@8d196754b4036150537f80ac539e15c2f1028841 # v1.2.0
+        id: nuget-login
+        with:
+          user: jafin
+
+      - name: Push to NuGet
+        if: ${{ !inputs.dry-run }}
+        run: dotnet nuget push ./artifacts/*.nupkg --source https://api.nuget.org/v3/index.json --api-key ${{ steps.nuget-login.outputs.NUGET_API_KEY }} --skip-duplicate
+
+      - name: Dry run — skipped NuGet publish
+        if: ${{ inputs.dry-run }}
+        run: echo "Dry run enabled — the package was built but not published to NuGet."
+
+      # Publishes the rolling draft that Release Drafter has been accumulating
+      # from merged PRs, so any manual edits made to it are kept.
+      - name: Publish GitHub Release
+        if: ${{ !inputs.prerelease-label && !inputs.dry-run }}
+        uses: release-drafter/release-drafter@978bb0b30c5ee8cdd332ced253758157150d43f0 # v7.10.0
+        with:
+          publish: true
+          tag: ${{ env.TAG }}
+          name: ${{ env.TAG }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # Release Drafter has no first-time-contributor detection, so borrow
+      # GitHub's own and append its "New Contributors" section to the notes.
+      - name: Append new contributors
+        if: ${{ !inputs.prerelease-label && !inputs.dry-run }}
+        env:
+          PREV: ${{ steps.previous.outputs.tag }}
+        run: |
+          prev="$PREV"
+          if [ -n "$prev" ]; then
+            generated=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+              -f tag_name="$TAG" -f previous_tag_name="$prev" --jq .body)
+          else
+            generated=$(gh api --method POST "repos/$GITHUB_REPOSITORY/releases/generate-notes" \
+              -f tag_name="$TAG" --jq .body)
+          fi
+
+          printf '%s\n' "$generated" | awk '/^## New Contributors/ { found = 1 } found { print }' > new-contributors.md
+
+          if [ ! -s new-contributors.md ]; then
+            echo "No new contributors in this release."
+            exit 0
+          fi
+
+          gh release view "$TAG" --repo "$GITHUB_REPOSITORY" --json body --jq .body > notes.md
+          printf '\n' >> notes.md
+          cat new-contributors.md >> notes.md
+          gh release edit "$TAG" --repo "$GITHUB_REPOSITORY" --notes-file notes.md
+          echo "Appended:"
+          cat new-contributors.md
+
+      - name: Upload release assets
+        if: ${{ !inputs.prerelease-label && !inputs.dry-run }}
+        uses: softprops/action-gh-release@efb35369e0ad2afab669f228072c1b0d510eae64 # v3.0.3
+        with:
+          tag_name: ${{ env.TAG }}
+          files: ./artifacts/*.nupkg
