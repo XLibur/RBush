@@ -326,14 +326,18 @@ public partial class RBush<T>
 
 	private static List<T> GetAllChildren(List<T> list, Node n)
 	{
+		// Indexed loops: Cast<T>() allocated an iterator and boxed an enumerator
+		// for every node visited.
+		var items = n.Items;
 		if (n.IsLeaf)
 		{
-			list.AddRange(n.Items.Cast<T>());
+			for (var i = 0; i < items.Count; i++)
+				list.Add((T)items[i]);
 		}
 		else
 		{
-			foreach (var node in n.Items.Cast<Node>())
-				_ = GetAllChildren(list, node);
+			for (var i = 0; i < items.Count; i++)
+				_ = GetAllChildren(list, (Node)items[i]);
 		}
 
 		return list;

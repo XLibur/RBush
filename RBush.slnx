@@ -12,6 +12,7 @@
     <File Path=".github/workflows/release.signed.yml" />
     <File Path=".github/workflows/release.yml" />
   </Folder>
+  <Project Path="RBush.Benchmarks/RBush.Benchmarks.csproj" />
   <Project Path="RBush.Test/RBush.Test.csproj" />
   <Project Path="RBush/RBush.csproj" />
 </Solution>

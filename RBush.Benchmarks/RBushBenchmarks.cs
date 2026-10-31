@@ -127,4 +127,39 @@ public class RBushBenchmarks
 			pts[i] = new PointC(rng.NextDouble() * 1000, rng.NextDouble() * 1000);
 		return pts;
 	}
+
+	// Full-tree scan: Search() with no arguments.
+	[Benchmark]
+	public int SearchAll_Class() =>
+		_classTree.Search().Count;
+
+	// Knn without maxDistance scans and sorts the whole tree per query (20 queries).
+	[Benchmark]
+	public int Knn_K10_Class()
+	{
+		var total = 0;
+		for (var i = 0; i < 20; i++)
+			total += _classTree.Knn(10, _queries[i].MinX, _queries[i].MinY).Count;
+		return total;
+	}
+
+	// Knn limited to a window around the point (1,000 queries).
+	[Benchmark]
+	public int Knn_K10_MaxDistance_Class()
+	{
+		var total = 0;
+		foreach (var q in _queries)
+			total += _classTree.Knn(10, q.MinX, q.MinY, maxDistance: 20).Count;
+		return total;
+	}
+
+	// Knn with a predicate (20 queries), which adds a closure and a filter stage.
+	[Benchmark]
+	public int Knn_K10_Predicate_Class()
+	{
+		var total = 0;
+		for (var i = 0; i < 20; i++)
+			total += _classTree.Knn(10, _queries[i].MinX, _queries[i].MinY, predicate: static p => p.Envelope.MinX >= 0).Count;
+		return total;
+	}
 }

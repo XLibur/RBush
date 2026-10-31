@@ -83,7 +83,7 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 	/// A list of every element contained in the <see cref="RBush{T}"/>.
 	/// </returns>
 	public IReadOnlyList<T> Search() =>
-		GetAllChildren([], Root);
+		GetAllChildren(new List<T>(Count), Root);
 
 	/// <summary>
 	/// Get all of the elements from this <see cref="RBush{T}"/>
