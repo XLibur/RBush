@@ -46,9 +46,14 @@ public partial class RBush<T>
 	#endregion
 
 	#region Insert
+	// Reused across inserts to avoid allocating a path list per insert.
+	// Insert is not safe for concurrent use, so a single buffer is fine.
+	private readonly List<Node> _path = [];
+
 	private List<Node> FindCoveringArea(in Envelope area, int depth)
 	{
-		var path = new List<Node>();
+		var path = _path;
+		path.Clear();
 		var node = Root;
 
 		while (true)
@@ -101,6 +106,9 @@ public partial class RBush<T>
 				path[depth].ResetEnvelope();
 			}
 		}
+
+		// don't keep nodes alive through the reusable buffer
+		path.Clear();
 	}
 
 	#region SplitNode
@@ -112,7 +120,7 @@ public partial class RBush<T>
 		SortChildren(node);
 
 		var splitPoint = GetBestSplitIndex(node.Items);
-		var newChildren = node.Items.Skip(splitPoint).ToList();
+		var newChildren = node.Items.GetRange(splitPoint, node.Items.Count - splitPoint);
 		node.RemoveRange(splitPoint, node.Items.Count - splitPoint);
 		return new Node(newChildren, node.Height);
 	}
@@ -222,7 +230,7 @@ public partial class RBush<T>
 		if (data.Count <= maxEntries)
 		{
 			return height == 1
-				? new Node(data.Cast<ISpatialData>().ToList(), height)
+				? new Node(ToItemList(data), height)
 				: new Node(
 					[
 						BuildNodes(data, height - 1, _maxEntries),
@@ -251,6 +259,15 @@ public partial class RBush<T>
 		return new Node(children, height);
 	}
 
+	private static List<ISpatialData> ToItemList(ArraySegment<T> data)
+	{
+		var list = new List<ISpatialData>(data.Count);
+		var array = data.Array!;
+		for (var i = 0; i < data.Count; i++)
+			list.Add(array[data.Offset + i]);
+		return list;
+	}
+
 	private static IEnumerable<ArraySegment<T>> Chunk(ArraySegment<T> values, int chunkSize)
 	{
 		var start = 0;
@@ -262,6 +279,16 @@ public partial class RBush<T>
 		}
 	}
 	#endregion
+
+	// Indexed loop: avoids boxing List<T>'s enumerator on every ResetEnvelope.
+	private static Envelope GetEnclosingEnvelope(List<ISpatialData> items)
+	{
+		var envelope = Envelope.EmptyBounds;
+		for (var i = 0; i < items.Count; i++)
+			envelope = envelope.Extend(items[i].Envelope);
+
+		return envelope;
+	}
 
 	private static Envelope GetEnclosingEnvelope(IEnumerable<ISpatialData> items)
 	{

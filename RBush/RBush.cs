@@ -217,9 +217,21 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 
 		if (node.IsLeaf)
 		{
-			var cnt = node.Items.RemoveAll(i => _comparer.Equals((T)i, item));
+			// manual compaction (same result as RemoveAll) without allocating a closure
+			var items = node.Items;
+			var write = 0;
+			for (var read = 0; read < items.Count; read++)
+			{
+				var current = items[read];
+				if (!_comparer.Equals((T)current, item))
+					items[write++] = current;
+			}
+
+			var cnt = items.Count - write;
 			if (cnt == 0)
 				return false;
+
+			items.RemoveRange(write, cnt);
 
 			Count -= cnt;
 			node.ResetEnvelope();
