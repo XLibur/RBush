@@ -227,11 +227,18 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 	/// <param name="item">The item, already carrying its new envelope.</param>
 	/// <param name="oldEnvelope">The envelope the item had in the tree.</param>
 	/// <returns><see langword="true"/> if the item was found and moved.</returns>
+	/// <exception cref="ArgumentException">
+	/// The current envelope of <paramref name="item"/> is invalid (NaN or minimum above maximum). The tree is unchanged.
+	/// </exception>
 	public bool Update(T item, in Envelope oldEnvelope)
 	{
 		// Guard on `is null` first so value-type T is never boxed.
 		if (item is null)
 			ArgumentNullException.ThrowIfNull(item);
+
+		// Validate the new envelope before touching the tree so a failure leaves it unchanged.
+		if (!item.Envelope.IsValid())
+			ThrowInvalidEnvelope(nameof(item), item.Envelope, index: null);
 
 		if (!DoDelete(Root, item, oldEnvelope))
 			return false;

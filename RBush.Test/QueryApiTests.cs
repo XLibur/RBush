@@ -339,4 +339,17 @@ public class QueryApiTests
 
 		await Assert.That(failures).IsEqualTo(0);
 	}
+
+	[Test]
+	public async Task Update_WithInvalidNewEnvelope_ThrowsAndLeavesTreeUnchanged()
+	{
+		var tree = new RBush<Box>();
+		var box = new Box(0, 0, 1, 1);
+		tree.Insert(box);
+		var old = box.Envelope;
+		box.MoveTo(double.NaN, 0);
+
+		await Assert.That(() => tree.Update(box, old)).Throws<ArgumentException>();
+		await Assert.That(tree.Count).IsEqualTo(1);
+	}
 }
