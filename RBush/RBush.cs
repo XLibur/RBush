@@ -192,7 +192,26 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 		if (item is null)
 			ArgumentNullException.ThrowIfNull(item);
 
-		return DoDelete(Root, item);
+		var deleted = DoDelete(Root, item);
+		if (deleted)
+			CondenseRoot();
+
+		return deleted;
+	}
+
+	// Shrinks the tree when deletions leave the root with at most one child.
+	private void CondenseRoot()
+	{
+		while (!Root.IsLeaf && Root.Items.Count <= 1)
+		{
+			if (Root.Items.Count == 0)
+			{
+				Clear();
+				return;
+			}
+
+			Root = (Node)Root.Items[0];
+		}
 	}
 
 	private bool DoDelete(Node node, T item)
@@ -219,7 +238,12 @@ public partial class RBush<T> : ISpatialDatabase<T>, ISpatialIndex<T> where T : 
 		}
 
 		if (flag)
+		{
+			// Drop children that became empty so they are neither kept in
+			// memory nor visited by later inserts and searches.
+			_ = node.Items.RemoveAll(n => ((Node)n).Items.Count == 0);
 			node.ResetEnvelope();
+		}
 
 		return flag;
 	}

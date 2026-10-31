@@ -497,6 +497,56 @@ public class RBushTests
 	}
 
 	[Test]
+	public void DeletingAllItemsResetsTree()
+	{
+		var data = GetPoints(100);
+		var tree = new RBush<Point>();
+		tree.BulkLoad(data);
+		Assert.True(tree.Root.Height > 1);
+
+		foreach (var p in data)
+			Assert.True(tree.Delete(p));
+
+		Assert.Equal(0, tree.Count);
+		Assert.True(tree.Root.IsLeaf);
+		Assert.Equal(0, tree.Root.Children.Count);
+		Assert.Empty(tree.Search());
+	}
+
+	[Test]
+	public void DeletingMostItemsShrinksTree()
+	{
+		var data = GetPoints(100);
+		var tree = new RBush<Point>();
+		tree.BulkLoad(data);
+
+		foreach (var p in data.Skip(1))
+			Assert.True(tree.Delete(p));
+
+		Assert.Equal(1, tree.Count);
+		Assert.Equal(1, tree.Root.Height);
+		Assert.Single(tree.Search());
+	}
+
+	[Test]
+	public void InsertAndSearchWorkAfterHeavyDeletion()
+	{
+		var data = GetPoints(100);
+		var tree = new RBush<Point>();
+		tree.BulkLoad(data);
+
+		foreach (var p in data.Take(90))
+			Assert.True(tree.Delete(p));
+
+		tree.BulkLoad(data.Take(90));
+		tree.Insert(new Point(minX: 500, minY: 500, maxX: 500, maxY: 500));
+
+		Assert.Equal(101, tree.Count);
+		Assert.Equal(101, tree.Search().Count);
+		Assert.Single(tree.Search(new Envelope(MinX: 499, MinY: 499, MaxX: 501, MaxY: 501)));
+	}
+
+	[Test]
 	public void BulkLoadOfExactPowerOfMaxEntriesDoesNotAddExtraLevel()
 	{
 		// 5^3 = 125; Math.Log(125) / Math.Log(5) evaluates to 3.0000000000000004
